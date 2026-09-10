@@ -383,3 +383,10 @@ h1,h2,h3,.big{font-family:"Archivo Narrow","Arial Narrow",Arial,sans-serif;}
 .tag.register{color:var(--s3);border-color:var(--s3);}
 .tag.reference{color:var(--s1);border-color:var(--s1);}
 .tag.directory,.tag.social{opacity:.75;}
+
+.sharebtn{
+  width:100%;border:1px solid var(--rule);background:none;color:var(--ink);
+  font:inherit;font-size:13px;padding:7px 0;border-radius:3px;cursor:pointer;
+  margin-top:4px;
+}
+.sharebtn:hover{border-color:var(--s1);color:var(--s1);}

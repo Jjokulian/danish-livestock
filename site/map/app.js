@@ -234,18 +234,16 @@ komLayer = L.geoJSON(KOM, {
             fillOpacity: 1, opacity: 1};
   }
 }).addTo(map);
-// #zoom/lat/lon keeps the view in the URL, so a place can be linked to.
+/* The hash carries the view, and since the settings pack into a dozen more
+   characters it carries those too -- see encodeState. The older #zoom/lat/lon
+   form is still read, so links made before that change still land in the right
+   place; only the writing side moved on. */
 var fromHash = /^#(\d+(?:\.\d+)?)\/(-?\d+\.?\d*)\/(-?\d+\.?\d*)$/.exec(location.hash);
 if (fromHash){
   map.setView([parseFloat(fromHash[2]), parseFloat(fromHash[3])], parseFloat(fromHash[1]));
 } else {
   map.fitBounds(komLayer.getBounds(), {padding: [12, 12]});
 }
-map.on("moveend", function(){
-  var c = map.getCenter();
-  history.replaceState(null, "", "#" + map.getZoom() + "/" +
-    c.lat.toFixed(5) + "/" + c.lng.toFixed(5));
-});
 }
 
 function addBasemaps(){
@@ -551,6 +549,8 @@ ctx = canvas.getContext("2d");
 map.on("move zoom", scheduleDraw);
 map.on("resize", function(){ sizeCanvas(); scheduleDraw(); });
 map.on("zoomend", buildLegend);
+// Panning and zooming are part of what a link should carry.
+map.on("moveend", rememberState);
 sizeCanvas();
 }
 
@@ -567,6 +567,7 @@ function applyFilter(){
   out.sort(function(a, b){ return value(b) - value(a); });
   state.filtered = out;
   updateStats();
+  rememberState();
   scheduleDraw();
 }
 
@@ -1299,6 +1300,125 @@ function dragAxis(el, opts){
   // those, and they remain the accessible way to reach an exact value.
 }
 
+
+/* ---------------- shareable state ----------------
+ *
+ * Every setting on this page is a handful of choices and one pair of
+ * coordinates, so a query string spelling them out -- ?slider_pos=812&mode=
+ * greater&lat=56.14283&lon=9.42831&zoom=11 -- would be mostly punctuation. They
+ * are packed into a bit string instead and written as base64url, which carries
+ * six bits a character against four for hex.
+ *
+ * Position is the only field that needs resolution. Denmark fits in about 3.4
+ * degrees of latitude and 7.6 of longitude, and twenty-two bits across that is
+ * under a metre -- far finer than the map can be read at any zoom, and still
+ * only four characters each.
+ *
+ * The first field is a version, so a link made today can be recognised or
+ * refused rather than silently misread if the layout ever changes.
+ */
+var SHARE_VERSION = 1;
+var SHARE_BOUNDS = {lat: [54.4, 57.9], lon: [7.8, 15.4]};
+var B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+function Bits(){
+  this.bits = "";
+}
+Bits.prototype.put = function(value, width){
+  var v = Math.max(0, Math.min(Math.pow(2, width) - 1, Math.round(value)));
+  var s = v.toString(2);
+  while (s.length < width) s = "0" + s;
+  this.bits += s;
+  return this;
+};
+Bits.prototype.toString = function(){
+  var out = "", bits = this.bits;
+  while (bits.length % 6) bits += "0";
+  for (var i = 0; i < bits.length; i += 6) out += B64[parseInt(bits.slice(i, i + 6), 2)];
+  return out;
+};
+function Reader(text){
+  this.bits = "";
+  for (var i = 0; i < text.length; i++){
+    var v = B64.indexOf(text[i]);
+    if (v < 0) throw new Error("not a share code");
+    var s = v.toString(2);
+    while (s.length < 6) s = "0" + s;
+    this.bits += s;
+  }
+  this.at = 0;
+}
+Reader.prototype.take = function(width){
+  if (this.at + width > this.bits.length) throw new Error("share code too short");
+  var v = parseInt(this.bits.substr(this.at, width), 2);
+  this.at += width;
+  return v;
+};
+
+function quantise(v, range, width){
+  var t = (v - range[0]) / (range[1] - range[0]);
+  return Math.max(0, Math.min(1, t)) * (Math.pow(2, width) - 1);
+}
+function unquantise(q, range, width){
+  return range[0] + (q / (Math.pow(2, width) - 1)) * (range[1] - range[0]);
+}
+
+function encodeState(){
+  var c = map.getCenter();
+  var b = new Bits();
+  b.put(SHARE_VERSION, 3);
+  b.put(state.group + 1, 4);                       // -1 (all) becomes 0
+  b.put(state.mode === "de" ? 1 : 0, 1);
+  b.put(state.colour === "density" ? 1 : 0, 1);
+  b.put(["max", "band", "min"].indexOf(state.herdMode), 2);
+  b.put(state.min, 10);                            // 0..1000
+  b.put(state.herdWidth * 100, 6);                 // 0.01..0.5, to a hundredth
+  b.put(state.showAll ? 1 : 0, 1);
+  b.put(Math.round(map.getZoom()), 5);
+  b.put(quantise(c.lat, SHARE_BOUNDS.lat, 22), 22);
+  b.put(quantise(c.lng, SHARE_BOUNDS.lon, 22), 22);
+  return b.toString();
+}
+
+function applyState(code){
+  var r = new Reader(code);
+  if (r.take(3) !== SHARE_VERSION) throw new Error("share code from another version");
+  var group = r.take(4) - 1;
+  var mode = r.take(1) ? "de" : "head";
+  var colour = r.take(1) ? "density" : "species";
+  var herdMode = ["max", "band", "min"][r.take(2)] || "min";
+  var min = r.take(10);
+  var width = Math.max(0.01, Math.min(0.5, r.take(6) / 100));
+  var showAll = !!r.take(1);
+  var zoom = r.take(5);
+  var lat = unquantise(r.take(22), SHARE_BOUNDS.lat, 22);
+  var lon = unquantise(r.take(22), SHARE_BOUNDS.lon, 22);
+
+  state.group = group;
+  state.mode = mode;
+  state.colour = colour;
+  state.herdMode = herdMode;
+  state.min = Math.min(min, HERD_POS_MAX);
+  state.herdWidth = width;
+  state.showAll = showAll;
+  map.setView([lat, lon], zoom);
+  return true;
+}
+
+/* Written to the hash rather than the query so it never reaches a server, and
+   replaced rather than pushed so a hundred small drags do not become a hundred
+   entries in the back button. */
+var shareTimer = null;
+function rememberState(){
+  if (!map) return;
+  clearTimeout(shareTimer);
+  shareTimer = setTimeout(function(){
+    try {
+      history.replaceState(null, "", "#" + encodeState());
+    } catch (e) { /* a sandboxed frame will refuse; the map still works */ }
+  }, 400);
+}
+
 /* ---------------- boot ---------------- */
 function wireControls(){
   document.getElementById("sizeMode").addEventListener("click", function(ev){
@@ -1368,6 +1488,30 @@ function wireControls(){
     var i = HERD_MODES.indexOf(state.herdMode);
     setHerdMode(HERD_MODES[(i + dir + HERD_MODES.length) % HERD_MODES.length]);
   }, {passive: false});
+
+  var shareBtn = document.getElementById("shareBtn");
+  if (shareBtn) shareBtn.addEventListener("click", function(){
+    var url = location.origin + location.pathname + "#" + encodeState();
+    var note = document.getElementById("shareNote");
+    function said(text){
+      if (!note) return;
+      var was = note.textContent;
+      note.textContent = text;
+      setTimeout(function(){ note.textContent = was; }, 2500);
+    }
+    // The clipboard needs a secure context and a permission; where it is not
+    // available the link is put in the address bar instead, which is one
+    // keystroke from the same result rather than a dead button.
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(
+        function(){ said("Copied: " + url.slice(url.indexOf("#")) ); },
+        function(){ history.replaceState(null, "", "#" + encodeState());
+                    said("In the address bar \u2014 copy it from there."); });
+    } else {
+      history.replaceState(null, "", "#" + encodeState());
+      said("In the address bar \u2014 copy it from there.");
+    }
+  });
 
   var colourSeg = document.getElementById("colourMode");
   if (colourSeg) colourSeg.addEventListener("click", function(ev){
@@ -1460,6 +1604,33 @@ function wireControls(){
   }
 }
 
+/* Put the controls where the state says, for when the state arrived from a link
+   rather than from someone pressing them. */
+function syncControls(){
+  function press(id, attr, value){
+    var host = document.getElementById(id);
+    if (!host) return;
+    host.querySelectorAll("button").forEach(function(el){
+      el.setAttribute("aria-pressed", el.dataset[attr] === value ? "true" : "false");
+    });
+  }
+  press("sizeMode", "mode", state.mode);
+  press("colourMode", "colour", state.colour);
+  press("herdMode", "hmode", state.herdMode);
+  var slider = document.getElementById("minHerd");
+  if (slider) slider.value = state.min;
+  var label = document.getElementById("minHerdLabel");
+  if (label) label.textContent = herdLabel(state.min);
+  var box = document.getElementById("showAll");
+  if (box) box.checked = state.showAll;
+  var note = document.getElementById("colourNote");
+  if (note) note.textContent = state.colour === "density"
+    ? "Animal units per hectare, for the business as a whole \u2014 grey where it "
+      + "declared no land, so there is no ratio to take."
+    : "Dots take their colour from the species kept at the site.";
+  paintHerdBand();
+}
+
 function initData(){
   for (var i = 0; i < S.length; i++){
     var key = S[i][CHR];
@@ -1487,10 +1658,19 @@ function initData(){
   document.getElementById("siteTotal").textContent = nf.format(S.length);
   var chrEl = document.getElementById("chrTotal");
   if (chrEl) chrEl.textContent = nf.format(byChr.size);
+  // A shared link is applied before the controls are built, so they render
+  // already showing what the link asked for rather than flicking to it.
+  // The old #zoom/lat/lon form was already handled when the map was built.
+  if (location.hash.length > 1 && location.hash.indexOf("/") === -1){
+    try { applyState(location.hash.slice(1)); }
+    catch (e){ /* a stale or mangled code is not worth an error page */ }
+  }
+
   herdScale();
   buildDensity();
   buildSpeciesList();
   buildLegend();
+  syncControls();
   applyFilter();
   var boot = document.getElementById("boot");
   if (boot) boot.remove();
