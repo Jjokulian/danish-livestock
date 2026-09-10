@@ -1,0 +1,152 @@
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">Statistics Denmark &middot; annual livestock census &middot; 1920&ndash;2025</div>
+  <h1>Danish Livestock<br>Since 1920</h1>
+  <p class="standfirst">A century of headcounts from the Danish agricultural census. The herd did not simply grow or shrink &mdash; it changed species. Horses and dairy cows gave way to pigs and broiler chickens, and the animals moved onto a fraction of the farms.</p>
+  <div class="byline eyebrow">
+    <span>Source: Statistikbanken tables HDYR1920, HDYR1, ANI5, ANI7</span>
+    <span>Compiled 9 September 2026</span>
+  </div>
+
+  <div class="figs">
+    <div class="fig">
+      <div class="stat-v">11.71m</div>
+      <div class="lab">Pigs on Danish farms, July 2025</div>
+      <div class="sub mono">1.95 per resident &middot; 15% below the 2007 peak</div>
+    </div>
+    <div class="fig">
+      <div class="stat-v">21.42m</div>
+      <div class="lab">Poultry, 2024</div>
+      <div class="sub mono">of which 13.78m broilers, 5.61m hens</div>
+    </div>
+    <div class="fig">
+      <div class="stat-v">1.40m</div>
+      <div class="lab">Cattle, 2025</div>
+      <div class="sub mono">39% of the 1961 peak</div>
+    </div>
+    <div class="fig">
+      <div class="stat-v">1,706</div>
+      <div class="lab">Farms still keeping pigs</div>
+      <div class="sub mono">55,023 kept pigs in 1982</div>
+    </div>
+  </div>
+</header>
+
+<section id="species">
+  <div class="sec-head">
+    <h2>Seven species, one century</h2>
+    <div class="eyebrow period">1920 &ndash; 2025 &middot; own scale per panel</div>
+  </div>
+  <p>Each panel has its own vertical scale, so read the shapes, not the heights &mdash; the panels below span three orders of magnitude, from 20 million chickens to 43,000 horses. Hover any panel to move a shared year marker across all seven.</p>
+  <div class="panels" id="panels"></div>
+  <p class="p-note" style="max-width:64ch;font-size:13px;margin-top:14px;">Filled dot marks each series' highest recorded year. Pre-1982 figures come from the historic census, published in thousands; the sheep series includes goats before 1982, and horses from 1982 onward count only horses kept on agricultural holdings.</p>
+</section>
+
+<section id="pigs">
+  <div class="sec-head">
+    <h2>The pigs leave alive</h2>
+    <div class="eyebrow period">1990 &ndash; 2025 &middot; million head per year</div>
+  </div>
+  <p>The pig herd has been roughly flat for two decades, but what happens to it has inverted. Danish slaughterhouses killed 22.2 million pigs in 2004 and 14.8 million in 2025, while exports of live pigs &mdash; overwhelmingly weaners of about 30 kg, sent to be fattened in Germany and Poland &mdash; went from 8,800 head in 1990 to 16.7 million. In 2023, for the first time, more pigs left Denmark alive than were slaughtered in it.</p>
+  <div class="chart-block">
+    <div class="chart-cap">
+      <h3>Pigs slaughtered in Denmark vs. exported live</h3>
+      <div class="unit mono">million head per year</div>
+    </div>
+    <div id="pigflow" class="chart-host"></div>
+    <div class="legend">
+      <span><i class="swatch" style="background:var(--s1)"></i>Slaughtered in Denmark</span>
+      <span><i class="swatch" style="background:var(--s2)"></i>Exported live</span>
+    </div>
+  </div>
+</section>
+
+<section id="dairy">
+  <div class="sec-head">
+    <h2>Fewer cows, more milk</h2>
+    <div class="eyebrow period">1990 &ndash; 2025 &middot; index, 1990 = 100</div>
+  </div>
+  <p>The clearest case of animals being replaced by productivity. Denmark milked 753,000 cows in 1990 and 549,000 in 2025 &mdash; a 27% fall &mdash; yet delivered 23% more milk, because the average cow went from 6,300 kg a year to 10,600 kg. Cow numbers had already been falling for half a century before that, from a peak of 1.8 million in 1933.</p>
+  <div class="chart-block">
+    <div class="chart-cap">
+      <h3>Dairy cows, milk output and yield per cow</h3>
+      <div class="unit mono">index, 1990 = 100</div>
+    </div>
+    <div id="milk" class="chart-host"></div>
+    <div class="legend">
+      <span><i class="swatch" style="background:var(--s3)"></i>Milk per cow</span>
+      <span><i class="swatch" style="background:var(--s2)"></i>Milk ex farm, total</span>
+      <span><i class="swatch" style="background:var(--s1)"></i>Dairy cows</span>
+    </div>
+  </div>
+</section>
+
+<section id="farms">
+  <div class="sec-head">
+    <h2>The herd stayed, the farms went</h2>
+    <div class="eyebrow period">1982 &ndash; 2025 &middot; holdings keeping each species</div>
+  </div>
+  <p>Concentration is the largest change in the data and the one the headcounts hide. Denmark keeps a quarter more pigs today than in 1982, on 3% as many farms. The sparklines below trace the number of holdings keeping each species; the right-hand columns give the average herd on those that remain.</p>
+  <div class="rows">
+    <div class="rows-head">
+      <div>Species</div><div class="sparkh">Holdings, 1982&ndash;2025</div><div class="r">1982</div><div class="r">Latest</div><div class="r">Herd size</div>
+    </div>
+    <div id="farmrows"></div>
+  </div>
+</section>
+
+<section id="mink">
+  <div class="sec-head">
+    <h2>One line that ends</h2>
+    <div class="eyebrow period">2010 &ndash; 2021 &middot; breeding animals</div>
+  </div>
+  <p>Fur animals &mdash; almost entirely mink &mdash; were counted alongside the rest until 2020. The July 2020 census found 2.23 million breeding animals on 817 farms; that November the entire national herd was ordered culled after a coronavirus variant was found in mink, and the series stops. Denmark had been the world's largest mink-pelt producer.</p>
+  <div class="chart-block">
+    <div class="chart-cap">
+      <h3>Fur animals on Danish farms</h3>
+      <div class="unit mono">breeding animals, July census</div>
+    </div>
+    <div id="minkchart" class="chart-host"></div>
+  </div>
+</section>
+
+<section id="table">
+  <div class="sec-head">
+    <h2>The numbers</h2>
+    <div class="eyebrow period">every counted year, 1920 &ndash; 2025</div>
+  </div>
+  <p>The full series behind the panels above. Blank cells are years with no count for that species.</p>
+  <div class="tablewrap"><table id="datatable"><thead></thead><tbody></tbody></table></div>
+</section>
+
+<section id="notes">
+  <div class="sec-head">
+    <h2>How to read this</h2>
+    <div class="eyebrow period">method &amp; caveats</div>
+  </div>
+  <div class="notes">
+    <div class="note">
+      <h3>A headcount, not a harvest</h3>
+      <p>Every figure is the stock of live animals standing on farms on one census day, not annual production. Broilers live about six weeks, so the 13.8 million standing in 2024 turn over many times: 106 million chickens were slaughtered in 2025.</p>
+    </div>
+    <div class="note">
+      <h3>Two registers, joined</h3>
+      <p>1920&ndash;1981 comes from the historic census (published in thousands, so those years are rounded to the nearest thousand); 1982 onward from the farm register. The join is visible as a small step in some series.</p>
+    </div>
+    <div class="note">
+      <h3>Sheep, goats and horses</h3>
+      <p>Before 1982 sheep and goats were counted together. Horses from 1982 include only those on agricultural holdings &mdash; the riding and leisure horses that make up most of the modern population are not in this series.</p>
+    </div>
+    <div class="note">
+      <h3>Missing years</h3>
+      <p>Poultry and sheep were not counted in a handful of interwar years, and poultry for 2025 was not yet published when this was compiled. Lines connect across those gaps; the table leaves them blank.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Data retrieved from the <a href="https://www.statbank.dk/statbank5a/default.asp?w=1280">Statistics Denmark StatBank API</a>: <span class="mono">HDYR1920</span> (livestock 1920&ndash;1981), <span class="mono">HDYR1</span> (farms with livestock, 1982&ndash;2025), <span class="mono">PELS11</span> (fur animals), <span class="mono">ANI5</span> (pig slaughterings and live exports), <span class="mono">ANI7</span> (milk), <span class="mono">HISB3</span> (population).
+</footer>
+
+</div>

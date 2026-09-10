@@ -1,0 +1,18 @@
+{
+  "out": "site/map/static-async-data",
+  "stores": [
+    {
+      "source": "site/map/data/cvr.json",
+      "name": "cvr",
+      "records_key": "c",
+      "shard_size": 50,
+      "note": "CVR company records, keyed by CVR number; meta holds the shared form, industry and role tables"
+    },
+    {
+      "source": "data/cvr_financials.json",
+      "name": "financials",
+      "shard_size": 20,
+      "note": "filed annual accounts parsed from XBRL, newest first, keyed by CVR number"
+    }
+  ]
+}

@@ -1,0 +1,101 @@
+<div class="app">
+
+  <header class="bar">
+    <h1>Every Livestock Farm in Denmark</h1>
+    <div class="sub"><span id="siteTotal" class="mono">57,860</span> herd records on
+      <span id="chrTotal" class="mono">43,520</span> sites, June 2024</div>
+    <div class="spacer"></div>
+    <div class="eyebrow">CHR &middot; Landbrugsstyrelsen open WFS &middot; no key required</div>
+  </header>
+
+  <div class="main">
+    <aside class="side">
+
+      <div class="blk">
+        <span class="eyebrow">Species</span>
+        <div class="species" id="speciesList"></div>
+      </div>
+
+      <div class="blk">
+        <span class="eyebrow">Circle size</span>
+        <div class="seg" id="sizeMode">
+          <button type="button" data-mode="head" aria-pressed="true">Animals</button>
+          <button type="button" data-mode="de" aria-pressed="false">Animal units</button>
+        </div>
+        <p class="note" style="margin:9px 0 0;" id="sizeNote">Area is proportional to the herd
+        recorded at the site.</p>
+      </div>
+
+      <div class="blk">
+        <span class="eyebrow">Smallest herd shown</span>
+        <input type="range" class="slider" id="minHerd" min="0" max="7" step="1" value="0"
+               aria-label="Minimum herd size">
+        <div class="slabel"><span id="minHerdLabel">All sites</span>
+          <span class="mono" id="shownCount">57,860</span></div>
+      </div>
+
+      <div class="blk">
+        <span class="eyebrow">Selection totals</span>
+        <div class="stats">
+          <div class="stat"><div class="big mono" id="stSites">—</div><div class="lb">herd records</div></div>
+          <div class="stat"><div class="big mono" id="stHead">—</div><div class="lb">animals</div></div>
+          <div class="stat"><div class="big mono" id="stDE">—</div><div class="lb">animal units (DE)</div></div>
+          <div class="stat"><div class="big mono" id="stLand">—</div><div class="lb" id="stLandLb">hectares farmed</div></div>
+          <div class="stat"><div class="big mono" id="stProp">—</div><div class="lb">hectares held as property</div></div>
+        </div>
+      </div>
+
+      <div class="blk">
+        <span class="eyebrow">Matrikel detail</span>
+        <p class="note" id="lodBlurb">Below zoom 11 the map shows farm locations only.
+        From zoom 11 the parcels of each property appear as one merged shape; from zoom 13
+        every matrikel is drawn at full accuracy. A click always resolves against the real
+        boundary underneath, whatever is being drawn.</p>
+        <p class="note" style="margin-top:8px;"><span class="mono" id="parcelCount">—</span>
+        parcel boundaries loaded.</p>
+      </div>
+
+      <div class="blk">
+        <span class="eyebrow">Largest municipalities</span>
+        <div class="komlist" id="komList"></div>
+      </div>
+
+      <div class="blk" style="border-bottom:0;">
+        <span class="eyebrow">About the numbers</span>
+        <p class="note">A CHR site is a place where animals are kept, not a company &mdash;
+        one business can hold several, and 10,147 sites keep more than one species, so they
+        appear once per species. Herd size is the June count in the register.
+        <b>DE</b> (dyreenheder) is the manure-regulation animal unit and is left at zero for
+        species outside that regulation, horses included.</p>
+        <p class="note" style="margin-top:9px;">Fish farms are in the register too, and they
+        carry 45 million of the animals counted under &ldquo;all registered sites&rdquo; &mdash;
+        pick a species to keep the totals comparable.</p>
+        <p class="note" style="margin-top:9px;">Two land figures, because they measure
+        different things. <b>Hectares farmed</b> is every parcel the site's CVR number declared
+        for area support in 2025 &mdash; it includes rented ground. <b>Hectares held as
+        property</b> is the cadastral extent of the samlet faste ejendom the farmyard stands
+        on, from the matrikel. Neither names an owner: that register needs a login.</p>
+      </div>
+
+    </aside>
+
+    <div id="map"></div>
+  </div>
+</div>
+
+<div class="legend" id="legend">
+  <span class="eyebrow" id="legendTitle">Animals per site</span>
+  <div class="sizes" id="legendSizes"></div>
+  <div class="lod mono" id="lodNote">Zoom in for matrikel boundaries</div>
+</div>
+
+<aside class="panel" id="panel" aria-live="polite">
+  <header>
+    <div>
+      <h3 id="panelTitle">—</h3>
+      <div class="psub mono" id="panelSub"></div>
+    </div>
+    <button type="button" id="panelClose" aria-label="Close">&times;</button>
+  </header>
+  <div class="pbody" id="panelBody"></div>
+</aside>
