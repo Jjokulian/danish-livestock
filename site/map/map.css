@@ -113,6 +113,28 @@ h1,h2,h3,.big{font-family:"Archivo Narrow","Arial Narrow",Arial,sans-serif;}
 .seg button[aria-pressed="true"]{background:var(--ink);color:var(--surface);}
 
 .slider{width:100%;margin:6px 0 2px;accent-color:var(--s1);}
+
+/* A slider that carries its own mode. The track is painted to show which side
+   of the handle is being kept -- everything above it, everything below it, or a
+   band around it -- so the mode is legible without reading a label. */
+.sliderwrap{position:relative;}
+.sliderwrap .slider{position:relative;z-index:1;background:transparent;}
+.sliderband{
+  position:absolute;left:8px;right:8px;top:50%;height:5px;margin-top:-2px;
+  border-radius:3px;background:var(--rule-soft);pointer-events:none;overflow:hidden;
+}
+.sliderband i{position:absolute;top:0;bottom:0;background:var(--s1);opacity:.30;}
+.modeseg{display:flex;gap:0;margin-top:2px;}
+.modeseg button{
+  flex:1;border:1px solid var(--rule);background:none;color:var(--muted);
+  font-family:"IBM Plex Mono",monospace;font-size:11px;line-height:1;
+  padding:5px 0;cursor:pointer;
+}
+.modeseg button+button{border-left:0;}
+.modeseg button:first-child{border-radius:3px 0 0 3px;}
+.modeseg button:last-child{border-radius:0 3px 3px 0;}
+.modeseg button[aria-pressed="true"]{color:var(--ink);border-color:var(--s1);
+  background:color-mix(in srgb, var(--s1) 12%, transparent);}
 .slabel{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-2);}
 
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:14px 12px;}

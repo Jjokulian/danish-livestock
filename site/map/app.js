@@ -25,6 +25,8 @@ var HERD_POS_MAX = 1000;   // slider positions; the threshold is derived, not st
 var herdCeiling = 1;       // largest herd among the species currently shown
 
 var state = {group: -1, mode: "head", min: 0,
+             herdMode: "min", herdWidth: 0.10,   // the slider's own mode
+
              filtered: [], colors: {},
              selected: null, showAll: false};
 var byChr = new Map();   // CHR number -> its herd records; one site can hold several
@@ -71,9 +73,44 @@ function herdFromPos(pos){
   return Math.round(Math.pow(herdCeiling, pos / HERD_POS_MAX));
 }
 
+/* The slider carries one position; the mode decides what it selects. Two of
+   the three are open-ended -- everything above the handle, or everything below
+   it. The third is a band around it, and its width comes from dragging the same
+   handle up and down rather than from a second one to fight over. */
+function herdRange(){
+  var v = herdFromPos(state.min);
+  if (state.herdMode === "max") return [0, v || Infinity];
+  if (state.herdMode === "band"){
+    var w = state.herdWidth * HERD_POS_MAX;
+    return [herdFromPos(Math.max(0, state.min - w)),
+            herdFromPos(Math.min(HERD_POS_MAX, state.min + w))];
+  }
+  return [v, Infinity];
+}
+
 function herdLabel(pos){
-  if (pos <= 0) return "All sites";
-  return nf.format(herdFromPos(pos)) + " animals or more";
+  var r = herdRange();
+  // At rest at either end the slider constrains nothing, whichever way it is
+  // pointing, and should say so rather than quote an infinity at the reader.
+  if (!isFinite(r[1]) && r[0] <= 0) return "All sites";
+  if (state.herdMode === "min") return nf.format(r[0]) + " animals or more";
+  if (state.herdMode === "max") return nf.format(r[1]) + " animals or fewer";
+  return nf.format(r[0]) + " to " + nf.format(r[1]) + " animals";
+}
+
+/* Paint the kept part of the track, so the mode is visible without reading. */
+function paintHerdBand(){
+  var band = document.getElementById("herdBand");
+  if (!band) return;
+  var fill = band.firstElementChild;
+  var at = state.min / HERD_POS_MAX * 100;
+  if (state.herdMode === "min"){ fill.style.left = at + "%"; fill.style.right = "0"; }
+  else if (state.herdMode === "max"){ fill.style.left = "0"; fill.style.right = (100 - at) + "%"; }
+  else {
+    var w = state.herdWidth * 100;
+    fill.style.left = Math.max(0, at - w) + "%";
+    fill.style.right = Math.max(0, 100 - Math.min(100, at + w)) + "%";
+  }
 }
 
 function value(row){ return state.mode === "head" ? row[HEAD] : row[DE] / 10; }
@@ -424,12 +461,12 @@ sizeCanvas();
 
 /* ---------------- filtering ---------------- */
 function applyFilter(){
-  var min = herdFromPos(state.min);
+  var range = herdRange();
   var out = [];
   for (var i = 0; i < S.length; i++){
     var row = S[i];
     if (state.group >= 0 && row[GRP] !== state.group) continue;
-    if (min > 0 && row[HEAD] < min) continue;
+    if (row[HEAD] < range[0] || row[HEAD] > range[1]) continue;
     out.push(row);
   }
   out.sort(function(a, b){ return value(b) - value(a); });
@@ -1092,11 +1129,11 @@ function telescope(el, opts){
     commit(Number(el.value) + delta);
   }
 
-  /* A drag is relative, because an absolute one would defeat the whole thing:
-     each move recomputes from the handle's new position, so the handle chases
-     the pointer and the magnification evaporates within a few frames. Instead
-     the pixels moved are scaled by a gain taken from how far out the pointer is
-     -- ordinary speed at arm's length, fiftieth speed against the handle. */
+  /* A drag follows the cursor exactly, like any other slider. Magnifying a drag
+     as well was a mistake: the thumb then lags behind the finger holding it,
+     which reads as a broken control however principled the curve behind it is.
+     Precision comes from clicking, which is a discrete act with nothing to lag.
+     The vertical axis still applies, since that is a separate gesture. */
   function drag(clientX, clientY){
     if (onVertical && clientY != null){
       // Up widens, down narrows -- screen coordinates run the other way.
@@ -1104,11 +1141,8 @@ function telescope(el, opts){
       if (dy) onVertical(dy);
       lastY = clientY;
     }
-    var g = geom();
-    var mag = Math.abs(pointerFraction(clientX) - handleFraction());
-    var gain = mag >= near ? 1
-      : Math.max(floor, Math.pow(mag / near, gamma - 1));
-    commit(Number(el.value) + (clientX - lastX) / g.width * span() * gain);
+    var min = Number(el.min) || 0;
+    commit(min + pointerFraction(clientX) * span());
     lastX = clientX;
   }
 
@@ -1153,12 +1187,55 @@ function wireControls(){
     buildLegend();
   });
   var minHerd = document.getElementById("minHerd");
+  var HERD_MODES = ["min", "band", "max"];
+
+  function refreshHerd(){
+    document.getElementById("minHerdLabel").textContent = herdLabel(state.min);
+    paintHerdBand();
+    applyFilter();
+  }
+
+  function setHerdMode(m){
+    state.herdMode = m;
+    var seg = document.getElementById("herdMode");
+    if (seg) seg.querySelectorAll("button").forEach(function(el){
+      el.setAttribute("aria-pressed", el.dataset.hmode === m ? "true" : "false");
+    });
+    refreshHerd();
+  }
+
   minHerd.addEventListener("input", function(){
     state.min = Number(this.value);
-    document.getElementById("minHerdLabel").textContent = herdLabel(state.min);
-    applyFilter();
+    refreshHerd();
   });
-  telescope(minHerd, {near: 0.25, gamma: 3});
+
+  /* Scrolling over the slider cycles the mode. It is the one gesture a range
+     input does not already use, it needs no extra chrome, and the painted track
+     shows immediately what it did. The buttons below do the same thing for
+     anyone who would rather see the choices. */
+  minHerd.addEventListener("wheel", function(ev){
+    ev.preventDefault();
+    var i = HERD_MODES.indexOf(state.herdMode);
+    setHerdMode(HERD_MODES[(i + (ev.deltaY > 0 ? 1 : HERD_MODES.length - 1)) % HERD_MODES.length]);
+  }, {passive: false});
+
+  var herdSeg = document.getElementById("herdMode");
+  if (herdSeg) herdSeg.addEventListener("click", function(ev){
+    var b = ev.target.closest("button");
+    if (b) setHerdMode(b.dataset.hmode);
+  });
+
+  telescope(minHerd, {
+    near: 0.25, gamma: 3,
+    // Only the band has a width to change, so the vertical axis is inert in the
+    // other two rather than quietly editing something invisible.
+    onVertical: function(dy){
+      if (state.herdMode !== "band") return;
+      state.herdWidth = Math.max(0.01, Math.min(0.5, state.herdWidth + dy));
+      refreshHerd();
+    }
+  });
+  paintHerdBand();
   var allBox = document.getElementById("showAll");
   if (allBox){
     allBox.addEventListener("change", function(){

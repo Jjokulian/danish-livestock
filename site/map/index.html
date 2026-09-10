@@ -40,13 +40,22 @@
 
       <div class="blk">
         <span class="eyebrow">Smallest herd shown</span>
-        <input type="range" class="slider" id="minHerd" min="0" max="1000" step="1" value="0"
-               aria-label="Minimum herd size">
+        <div class="sliderwrap">
+          <div class="sliderband" id="herdBand"><i></i></div>
+          <input type="range" class="slider" id="minHerd" min="0" max="1000" step="1" value="0"
+                 aria-label="Herd size threshold">
+        </div>
+        <div class="modeseg" id="herdMode">
+          <button type="button" data-hmode="min" aria-pressed="true" title="This many or more">&ge; more</button>
+          <button type="button" data-hmode="band" aria-pressed="false" title="Around this many; drag up and down to widen">&plusmn; around</button>
+          <button type="button" data-hmode="max" aria-pressed="false" title="This many or fewer">&le; fewer</button>
+        </div>
         <div class="slabel"><span id="minHerdLabel">All sites</span>
           <span class="mono" id="shownCount">57,860</span></div>
         <p class="note" style="margin:9px 0 0;">Logarithmic, and scaled to whichever
         species is selected. Clicking near the handle magnifies around it, so the
-        last few holdings can be separated one at a time.</p>
+        last few holdings can be separated one at a time. <b>Scroll</b> over the
+        slider to change mode; in <b>around</b>, drag up and down to widen the band.</p>
       </div>
 
       <div class="blk">

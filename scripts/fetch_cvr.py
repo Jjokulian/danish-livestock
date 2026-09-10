@@ -66,6 +66,18 @@ def cvrs_on_the_map():
     return sorted({row[9] for row in sites if row[9]})
 
 
+def cvrs_from(path):
+    """An explicit list of CVR numbers, for the farms CHR does not name.
+
+    Livestock is only part of Danish farming: 26,922 businesses declare field
+    parcels for area support and fewer than half of them keep animals. The rest
+    are croppers, and they are just as much farms -- they simply do not appear
+    in a livestock register. Their CVR numbers come from Marker instead.
+    """
+    nums = json.loads(pathlib.Path(path).read_text())
+    return sorted({int(n) for n in nums})
+
+
 def already_have():
     """CVR numbers already in the cache."""
     seen = set()
@@ -308,17 +320,19 @@ def main():
     ap.add_argument("--delay", type=float, default=0.8,
                     help="seconds each worker pauses between lookups")
     ap.add_argument("--refresh", action="store_true", help="re-fetch CVRs already cached")
+    ap.add_argument("--targets", help="JSON file holding a list of CVR numbers to "
+                                      "fetch, instead of the ones on the map")
     args = ap.parse_args()
 
     fetch, slim = SOURCES[args.source]
-    targets = cvrs_on_the_map()
+    targets = cvrs_from(args.targets) if args.targets else cvrs_on_the_map()
     seen = set() if args.refresh else already_have()
     todo = [c for c in targets if c not in seen]
     if args.limit:
         todo = todo[:args.limit]
 
     rate = args.workers / max(args.delay + 0.5, 0.1)
-    print(f"{len(targets):,} CVR numbers on the map, {len(seen):,} cached, "
+    print(f"{len(targets):,} CVR numbers wanted, {len(seen):,} cached, "
           f"{len(todo):,} to fetch from {args.source} "
           f"(~{len(todo) / rate / 3600:.1f} h at ~{rate:.1f}/s)")
     if not todo:

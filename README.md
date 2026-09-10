@@ -226,6 +226,13 @@ photos, which are markedly better over farmland than anything keyless. Everythin
 else is intact. That is not enough to be worth running a server for; if you want
 those layers, run `serve.py` somewhere and it will use them automatically.
 
+## Not done yet
+
+**The layout assumes a desktop.** A 330 px sidebar beside a full-height map, a
+panel that slides in from the right, and a slider whose mode changes on scroll
+are all mouse-and-keyboard assumptions. Porting it to a phone is worth doing
+once the data side has settled, and is deliberately not attempted before then.
+
 ## The token stays on the server
 
 `serve.py` proxies the Klimadatastyrelsen basemaps at `/api/wms/topo` and
