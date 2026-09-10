@@ -20,6 +20,7 @@ import json
 import pathlib
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -36,18 +37,29 @@ UA = {"User-Agent": "danish-livestock/1.0 (CHR WFS pull)"}
 TOTAL_WORDS = ("i alt", "ialt", "total")
 
 
-def get(params):
+def get(params, tries=3):
+    """The bytes, or None if the server would not produce them.
+
+    Returning None rather than raising is the point: a page this server cannot
+    serve is a fact about that range of records, not about the connection, and
+    the caller's answer to both is the same -- ask for fewer. Hammering a range
+    that will never work also seems to provoke 400s of its own, so a failure
+    here narrows the request instead of retrying it into the ground.
+    """
     url = WFS + "?" + urllib.parse.urlencode(params)
-    for attempt in range(4):
+    for attempt in range(tries):
         try:
             req = urllib.request.Request(url, headers=UA)
             with urllib.request.urlopen(req, timeout=240) as r:
                 return r.read()
+        except urllib.error.HTTPError:
+            return None                      # the server has an opinion; respect it
         except Exception as exc:
-            if attempt == 3:
-                raise
-            print(f"    retry {attempt + 1} after {exc}", flush=True)
-            time.sleep(5 * (attempt + 1))
+            if attempt == tries - 1:
+                print(f"    giving up on this page: {exc}", flush=True)
+                return None
+            time.sleep(4 * (attempt + 1))
+    return None
 
 
 def tenths(raw):
@@ -92,6 +104,8 @@ def page(yy, start, count):
                "typeNames": f"Jordbrugsanalyser:CHR{yy}",
                "outputFormat": "application/json", "srsName": "EPSG:4326",
                "count": count, "startIndex": start})
+    if raw is None:
+        return None
     try:
         # GeoServer's JSON writer says UTF-8 and emits ISO-8859-1.
         return json.loads(raw.decode("latin-1"))
@@ -158,14 +172,24 @@ def fetch_year(yy):
 
 
 def main():
+    global PAGE
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--years", nargs="*", help="two-digit years; default 00-23")
     ap.add_argument("--force", action="store_true", help="re-fetch years already on disk")
+    ap.add_argument("--page", type=int, default=PAGE,
+                    help="records per request. The default halves its way around a "
+                         "record the server cannot serialise, which works without "
+                         "knowing in advance which year is broken but costs most of "
+                         "a megabyte per failed probe -- CHR19 took an hour and three "
+                         "quarters. For a year already known to be fragile, asking "
+                         "for fewer up front is far quicker.")
     args = ap.parse_args()
 
     years = args.years or [f"{y:02d}" for y in range(0, 24)]
     OUT.mkdir(parents=True, exist_ok=True)
+
+    PAGE = args.page
 
     for yy in years:
         path = OUT / f"{yy}.json"

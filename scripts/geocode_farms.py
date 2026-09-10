@@ -88,20 +88,104 @@ def lookup(query, tries=3):
     return None
 
 
+DATAVASK = "https://api.dataforsyningen.dk/datavask/adresser"
+
+
+def wash(query, tries=3):
+    """DAWA's address-washing endpoint, for the strings plain search cannot take.
+
+    About one address in nine is written in a way the search endpoint will not
+    match: a care-of prefix carrying a person's name before the street, or a
+    village name jammed in after the house number. Datavask is built for exactly
+    that and returns a category with its answer.
+
+    Only A and B are used. C means it found several possibilities and picked
+    one, and it picks badly -- "C/O Karen Marie Ravn Birkevej 4" comes back as
+    Enemaerkevej 7A, a different street. A farm drawn at the wrong address is
+    worse than a farm not drawn, so C is treated as no answer.
+    """
+    url = DATAVASK + "?" + urllib.parse.urlencode({"betegnelse": query})
+    for attempt in range(tries):
+        try:
+            req = urllib.request.Request(url, headers=UA)
+            with urllib.request.urlopen(req, timeout=25) as r:
+                res = json.loads(r.read().decode("utf-8"))
+            break
+        except Exception:
+            if attempt == tries - 1:
+                return None
+            time.sleep(2 * (attempt + 1))
+    if res.get("kategori") not in ("A", "B"):
+        return None
+    best = (res.get("resultater") or [{}])[0].get("adresse") or {}
+    uid = best.get("adgangsadresseid")
+    if not uid:
+        return None
+    try:
+        req = urllib.request.Request(
+            f"https://api.dataforsyningen.dk/adgangsadresser/{uid}?struktur=mini",
+            headers=UA)
+        with urllib.request.urlopen(req, timeout=25) as r:
+            a = json.loads(r.read().decode("utf-8"))
+        return {"lon": round(a["x"], 5), "lat": round(a["y"], 5),
+                "at": a.get("betegnelse"), "via": res["kategori"]}
+    except Exception:
+        return None
+
+
+def retry_unmatched(farms, delay):
+    """Second pass over the addresses the plain search could not place."""
+    lines = OUT.read_text(encoding="utf-8").splitlines() if OUT.exists() else []
+    keep, retry = [], []
+    for line in lines:
+        if not line.strip():
+            continue
+        rec = json.loads(line)
+        (keep if rec.get("ok") else retry).append(rec)
+    todo = [r["cvr"] for r in retry if r["cvr"] in farms]
+    print(f"{len(todo):,} unmatched addresses to wash "
+          f"(~{len(todo) * (delay + 0.16) / 60:.0f} min)", flush=True)
+
+    found = 0
+    for i, cvr in enumerate(todo, 1):
+        d = farms[cvr]
+        q = " ".join(f"{d['address']}, {d['city']}".split())
+        got = wash(q)
+        if got:
+            found += 1
+            keep.append({"cvr": cvr, "ok": True, **got})
+        else:
+            keep.append({"cvr": cvr, "ok": False})
+        if i % 250 == 0 or i == len(todo):
+            print(f"  {i:,}/{len(todo):,}  {found:,} rescued", flush=True)
+        time.sleep(delay)
+
+    OUT.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in keep) + "\n",
+                   encoding="utf-8")
+    total = sum(1 for r in keep if r.get("ok"))
+    print(f"done: {found:,} rescued; {total:,} of {len(farms):,} placed "
+          f"({total / len(farms) * 100:.1f}%)")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--limit", type=int)
     ap.add_argument("--delay", type=float, default=0.05)
+    ap.add_argument("--retry-unmatched", action="store_true",
+                    help="second pass over the addresses plain search could not place")
     args = ap.parse_args()
 
     farms = crop_only()
+    if args.retry_unmatched:
+        return retry_unmatched(farms, args.delay)
     seen = already_have()
     todo = [c for c in sorted(farms) if c not in seen]
     if args.limit:
         todo = todo[:args.limit]
     print(f"{len(farms):,} crop-only businesses, {len(seen):,} placed, "
-          f"{len(todo):,} to geocode (~{len(todo) * (args.delay + 0.08) / 60:.0f} min)")
+          f"{len(todo):,} to geocode (~{len(todo) * (args.delay + 0.08) / 60:.0f} min)",
+          flush=True)
     if not todo:
         return
 
