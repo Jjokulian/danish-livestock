@@ -39,6 +39,16 @@
       </div>
 
       <div class="blk">
+        <span class="eyebrow">Colour</span>
+        <div class="seg" id="colourMode">
+          <button type="button" data-colour="species" aria-pressed="true">Species</button>
+          <button type="button" data-colour="density" aria-pressed="false">Animal density</button>
+        </div>
+        <p class="note" style="margin:9px 0 0;" id="colourNote">Dots take their colour
+        from the species kept at the site.</p>
+      </div>
+
+      <div class="blk">
         <span class="eyebrow">Herd size</span>
         <div class="sliderwrap">
           <div class="sliderband" id="herdBand"><i class="fill"></i></div>
@@ -49,9 +59,9 @@
                  aria-label="Herd size threshold">
         </div>
         <div class="modeseg" id="herdMode">
-          <button type="button" data-hmode="min" aria-pressed="true" title="This many or more">&ge; more</button>
-          <button type="button" data-hmode="band" aria-pressed="false" title="Around this many; drag up and down to widen">&plusmn; around</button>
           <button type="button" data-hmode="max" aria-pressed="false" title="This many or fewer">&le; fewer</button>
+          <button type="button" data-hmode="band" aria-pressed="false" title="Around this many; drag up and down to widen">&plusmn; around</button>
+          <button type="button" data-hmode="min" aria-pressed="true" title="This many or more">&ge; more</button>
         </div>
         <div class="slabel"><span id="minHerdLabel">All sites</span>
           <span class="mono" id="shownCount">57,860</span></div>

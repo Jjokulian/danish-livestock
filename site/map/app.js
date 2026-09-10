@@ -23,8 +23,51 @@ var Z_SHARP = 13;    // at and above this, full detail and individual matrikel l
 
 var HERD_POS_MAX = 1000;   // slider positions; the threshold is derived, not stepped
 var herdCeiling = 1;       // largest herd among the species currently shown
+var density = null;        // CVR -> animal units per declared hectare
 
-var state = {group: -1, mode: "head", min: 0,
+/* Animal units per hectare is the number Danish manure regulation is written
+   around: a holding must have land enough to spread what its animals produce,
+   or an agreement with someone who has. The old harmony ceiling was 1.4 DE/ha
+   for most species. Both halves are already on every site record -- DE from
+   CHR, hectares from the parcels the business declared for area support -- so
+   the ratio costs nothing to compute and says more about a farm's intensity
+   than either number alone.
+
+   It belongs to the business, not the site: a company with four barns spreads
+   across all its land, so the units are summed per CVR and divided once. */
+var DENSITY_STOPS = [0.5, 1.0, 1.4, 2.5];   // the last is the old harmony limit
+
+function buildDensity(){
+  var de = new Map(), ha = new Map();
+  for (var i = 0; i < S.length; i++){
+    var cvr = S[i][CVR];
+    if (!cvr || !S[i][HA]) continue;
+    de.set(cvr, (de.get(cvr) || 0) + S[i][DE] / 10);
+    ha.set(cvr, S[i][HA]);
+  }
+  density = new Map();
+  de.forEach(function(units, cvr){
+    var land = ha.get(cvr);
+    if (land > 0 && units > 0) density.set(cvr, units / land);
+  });
+}
+
+function densityOf(row){
+  if (!density || !row || !row[CVR]) return null;
+  var v = density.get(row[CVR]);
+  return v === undefined ? null : v;
+}
+
+/* Five bands rather than a smooth ramp: the reading that matters is which side
+   of the harmony limit a holding sits on, and a continuous gradient hides a
+   threshold rather than showing it. */
+function densityBand(v){
+  if (v == null) return -1;
+  for (var i = 0; i < DENSITY_STOPS.length; i++) if (v < DENSITY_STOPS[i]) return i;
+  return DENSITY_STOPS.length;
+}
+
+var state = {group: -1, mode: "head", min: 0, colour: "species",
              herdMode: "min", herdWidth: 0.10,   // the slider's own mode
 
              filtered: [], colors: {},
@@ -45,7 +88,10 @@ function readColors(){
     parcelFill: css("--parcel-fill"), parcelFillStrong: css("--parcel-fill-strong"),
     parcelLine: css("--parcel-line"), otherFill: css("--other-fill"),
     otherLine: css("--other-line"),
-    selected: css("--selected")
+    selected: css("--selected"),
+    // Grey for "no declared land, so no ratio", then cool to warm across the
+    // bands. The warm end is deliberately the side of the harmony limit.
+    density: [css("--s0"), css("--d1"), css("--d2"), css("--d3"), css("--d4"), css("--d5")]
   };
 }
 readColors();
@@ -467,7 +513,9 @@ function draw(){
     ctx.beginPath();
     ctx.arc(X, Y, r, 0, 6.283185);
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = state.colors[GROUP_VAR[row[GRP]]];
+    ctx.fillStyle = state.colour === "density"
+      ? (state.colors.density[densityBand(densityOf(row)) + 1] || state.colors["--s0"])
+      : state.colors[GROUP_VAR[row[GRP]]];
     ctx.fill();
     if (r > 3.6){
       ctx.globalAlpha = 0.9;
@@ -623,7 +671,27 @@ function zoomToKommune(idx){
 }
 
 /* ---------------- legend ---------------- */
+function buildDensityLegend(){
+  var host = document.getElementById("legendSizes");
+  host.textContent = "";
+  var caps = ["under 0.5", "0.5-1.0", "1.0-1.4", "1.4-2.5", "over 2.5"];
+  caps.forEach(function(cap, i){
+    var wrap = document.createElement("div");
+    wrap.className = "sz";
+    wrap.innerHTML = '<div class="dot" style="width:11px;height:11px;background:' +
+      state.colors.density[i + 1] + '"></div><div class="cap">' + cap + "</div>";
+    host.appendChild(wrap);
+  });
+}
+
 function buildLegend(){
+  if (state.colour === "density"){
+    document.getElementById("legendTitle").textContent = "Animal units per hectare";
+    buildDensityLegend();
+    var dn = document.getElementById("lodNote");
+    if (dn) dn.textContent = "1.4 DE/ha was the old harmony ceiling";
+    return;
+  }
   var vals = state.mode === "head" ? [10, 1000, 100000] : [10, 100, 1000];
   var zf = zoomFactor(map.getZoom());
   var host = document.getElementById("legendSizes");
@@ -725,6 +793,11 @@ function openPanel(row, parcel){
   if (row && (row[CVR] || row[HA])){
     html += '<section><h4>Operation</h4>';
     if (row[CVR]) html += row2("CVR", row[CVR]);
+    var dv = densityOf(row);
+    if (dv != null){
+      html += row2("Animal units per hectare", dv.toFixed(2) +
+        (dv >= 1.4 ? ' <span style="color:var(--s2)">over 1.4</span>' : ""));
+    }
     if (row[HA]) html += row2("Land declared", nf.format(row[HA]) + " ha");
     if (row[LPARC]) html += row2("Fields declared", nf.format(row[LPARC]));
     if (row[CROP] >= 0) html += row2("Largest crop", esc(D.crops[row[CROP]]));
@@ -1244,7 +1317,9 @@ function wireControls(){
     buildLegend();
   });
   var minHerd = document.getElementById("minHerd");
-  var HERD_MODES = ["min", "band", "max"];
+  // Left to right, small to large -- the same direction as the track.
+  var HERD_MODES = ["max", "band", "min"];
+  var wheelAcc = 0, wheelAt = 0, wheelFired = 0;
 
   function refreshHerd(){
     document.getElementById("minHerdLabel").textContent = herdLabel(state.min);
@@ -1272,9 +1347,43 @@ function wireControls(){
      anyone who would rather see the choices. */
   minHerd.addEventListener("wheel", function(ev){
     ev.preventDefault();
+    /* One detent, one change.
+     *
+     * A wheel event's deltaY is whatever the operating system decided a tick is
+     * worth -- lines on one machine, accelerated pixels on another, and a
+     * trackpad emits a burst of small ones for a single flick. Acting on each
+     * event cycles the mode two or three times per notch. So the deltas are
+     * normalised to pixels, accumulated, and spent one step at a time, with a
+     * short refractory period so a burst cannot fire twice.
+     */
+    var now = (window.performance && performance.now()) ? performance.now() : Date.now();
+    var px = ev.deltaY * (ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? 400 : 1);
+    if (now - wheelAt > 300) wheelAcc = 0;      // a pause means a new gesture
+    wheelAt = now;
+    wheelAcc += px;
+    if (Math.abs(wheelAcc) < 30 || now - wheelFired < 140) return;
+    var dir = wheelAcc > 0 ? 1 : -1;
+    wheelAcc = 0;
+    wheelFired = now;
     var i = HERD_MODES.indexOf(state.herdMode);
-    setHerdMode(HERD_MODES[(i + (ev.deltaY > 0 ? 1 : HERD_MODES.length - 1)) % HERD_MODES.length]);
+    setHerdMode(HERD_MODES[(i + dir + HERD_MODES.length) % HERD_MODES.length]);
   }, {passive: false});
+
+  var colourSeg = document.getElementById("colourMode");
+  if (colourSeg) colourSeg.addEventListener("click", function(ev){
+    var b = ev.target.closest("button");
+    if (!b) return;
+    state.colour = b.dataset.colour;
+    this.querySelectorAll("button").forEach(function(el){
+      el.setAttribute("aria-pressed", el.dataset.colour === state.colour ? "true" : "false");
+    });
+    document.getElementById("colourNote").textContent = state.colour === "density"
+      ? "Animal units per hectare, for the business as a whole \u2014 grey where it "
+        + "declared no land, so there is no ratio to take."
+      : "Dots take their colour from the species kept at the site.";
+    buildLegend();
+    scheduleDraw();
+  });
 
   var herdSeg = document.getElementById("herdMode");
   if (herdSeg) herdSeg.addEventListener("click", function(ev){
@@ -1379,6 +1488,7 @@ function initData(){
   var chrEl = document.getElementById("chrTotal");
   if (chrEl) chrEl.textContent = nf.format(byChr.size);
   herdScale();
+  buildDensity();
   buildSpeciesList();
   buildLegend();
   applyFilter();

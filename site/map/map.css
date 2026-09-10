@@ -21,6 +21,11 @@
   --parcel-fill-strong:rgba(16,18,15,0.11);
   --parcel-line:rgba(16,18,15,0.34);
   --selected:#eb6834;
+  /* Animal density bands: cool where there is land enough, warm where there is
+     not. Chosen to stay apart for the commonest colour deficiencies -- the
+     sequence runs light to dark as well as blue to red, so it survives being
+     read as brightness alone. */
+  --d1:#2c7fb8; --d2:#7fcdbb; --d3:#fecc5c; --d4:#fd8d3c; --d5:#bd0026;
   --focus:#2a78d6;
   --shadow:0 6px 20px rgba(16,18,15,.12);
 }
@@ -38,6 +43,7 @@
     --parcel-fill-strong:rgba(255,255,255,0.115);
     --parcel-line:rgba(255,255,255,0.36);
     --selected:#d95926;
+    --d1:#418fc4; --d2:#63b7a4; --d3:#e0b84e; --d4:#e07c32; --d5:#c4243f;
     --focus:#3987e5; --shadow:0 6px 20px rgba(0,0,0,.5);
   }
 }
@@ -54,6 +60,7 @@
   --parcel-fill-strong:rgba(255,255,255,0.115);
   --parcel-line:rgba(255,255,255,0.36);
   --selected:#d95926;
+  --d1:#418fc4; --d2:#63b7a4; --d3:#e0b84e; --d4:#e07c32; --d5:#c4243f;
   --focus:#3987e5; --shadow:0 6px 20px rgba(0,0,0,.5);
 }
 
