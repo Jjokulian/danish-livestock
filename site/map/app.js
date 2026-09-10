@@ -115,6 +115,13 @@ function herdLabel(pos){
 }
 
 /* Paint the kept part of the track, so the mode is visible without reading. */
+/* A percentage along the usable track, in the same inset coordinates the thumb
+   travels in -- the browser keeps the thumb half its width from each end, so a
+   plain percentage of the element's width drifts out of line towards the ends. */
+function trackAt(pct){
+  return "calc(8px + " + pct + "% - " + (pct / 100 * 16) + "px)";
+}
+
 function paintHerdBand(){
   var band = document.getElementById("herdBand");
   if (!band) return;
@@ -124,8 +131,15 @@ function paintHerdBand(){
   var hi = document.getElementById("herdEdgeHi");
   var at = state.min / HERD_POS_MAX * 100;
 
-  if (state.herdMode === "min"){ fill.style.left = at + "%"; fill.style.right = "0"; }
-  else if (state.herdMode === "max"){ fill.style.left = "0"; fill.style.right = (100 - at) + "%"; }
+  var cueX = document.getElementById("herdCueX");
+  if (state.herdMode === "min"){
+    fill.style.left = at + "%"; fill.style.right = "0";
+    if (cueX) cueX.style.left = trackAt(at);
+  }
+  else if (state.herdMode === "max"){
+    fill.style.left = "0"; fill.style.right = (100 - at) + "%";
+    if (cueX) cueX.style.left = trackAt(at);
+  }
   else {
     var b = herdBandPos();
     var l = b[0] / HERD_POS_MAX * 100, r = b[1] / HERD_POS_MAX * 100;
@@ -134,9 +148,14 @@ function paintHerdBand(){
     // The edges sit on the same inset track the fill does, so they line up with
     // where the thumb would have been rather than with the element's full width.
     if (lo && hi){
-      lo.style.left = "calc(8px + " + l + "% - " + (l / 100 * 16) + "px - 1px)";
-      hi.style.left = "calc(8px + " + r + "% - " + (r / 100 * 16) + "px - 1px)";
+      lo.style.left = trackAt(l);
+      hi.style.left = trackAt(r);
     }
+    var cl = document.getElementById("herdCueLo");
+    var ch = document.getElementById("herdCueHi");
+    if (cueX) cueX.style.left = trackAt((l + r) / 2);
+    if (cl) cl.style.left = trackAt(l);
+    if (ch) ch.style.left = trackAt(r);
   }
   if (wrap) wrap.classList.toggle("band", state.herdMode === "band");
 }
@@ -1096,6 +1115,13 @@ function dragAxis(el, opts){
   var vScale = opts.vScale || 160;      // pixels for the full width of the range
   var deadzone = opts.deadzone || 6;    // px before a direction counts as chosen
   var grab = opts.grab || function(frac){ return Math.abs(frac - handleFraction()) < 0.02; };
+  // Told which way the gesture committed, so the control can show it. Called
+  // with null on release, and only ever once per press.
+  var onAxis = opts.onAxis || null;
+  // Whether the vertical axis means anything right now. Where it does not, a
+  // vertical drag is treated as horizontal rather than engaging a gear that
+  // does nothing -- an inert mode is worse than no mode.
+  var vertical = opts.allowVertical || function(){ return !!onVertical; };
 
   var dragging = false, grabbed = false, grabOffset = 0;
   var axis = null, downX = 0, downY = 0, pivotX = 0, pivotY = 0, moved = false;
@@ -1169,8 +1195,9 @@ function dragAxis(el, opts){
       // worse than either. One decision per press; change your mind by letting
       // go and starting again.
       if (Math.max(Math.abs(dx), Math.abs(dy)) < deadzone) return;
-      axis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
+      axis = (!vertical() || Math.abs(dx) >= Math.abs(dy)) ? "x" : "y";
       rewind();
+      if (onAxis) onAxis(axis);
     }
 
     if (axis === "x"){
@@ -1191,6 +1218,7 @@ function dragAxis(el, opts){
     dragging = false;
     grabbed = false;
     axis = null;
+    if (onAxis) onAxis(null);
   }
   el.addEventListener("pointerup", stop);
   el.addEventListener("pointercancel", stop);
@@ -1264,6 +1292,23 @@ function wireControls(){
     },
     // The width is read and written rather than nudged, so the axis lock can
     // put it back exactly as it was if the gesture turns out to be horizontal.
+    /* Say which gear engaged, so the gesture teaches itself. Nothing is shown
+       until the drag commits, because until then nothing has happened. */
+    allowVertical: function(){ return state.herdMode === "band"; },
+    onAxis: function(axis){
+      var wrap = minHerd.parentNode;
+      wrap.classList.toggle("gear-x", axis === "x");
+      wrap.classList.toggle("gear-y", axis === "y");
+      if (!axis) return;
+      var ids = axis === "x" ? ["herdCueX"] : ["herdCueLo", "herdCueHi"];
+      ids.forEach(function(id){
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.classList.remove("flash");
+        void el.offsetWidth;     // restart the animation rather than ignore it
+        el.classList.add("flash");
+      });
+    },
     readVertical: function(){ return state.herdWidth; },
     onVertical: function(w){
       if (state.herdMode !== "band") return;

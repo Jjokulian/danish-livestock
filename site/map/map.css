@@ -130,7 +130,7 @@ h1,h2,h3,.big{font-family:"Archivo Narrow","Arial Narrow",Arial,sans-serif;}
    says the wrong thing about what is selected. The input is still there and
    still takes the pointer; only its thumb is invisible. */
 .sliderwrap .edge{
-  position:absolute;top:50%;width:2px;height:15px;margin-top:-7px;
+  position:absolute;top:50%;width:2px;height:15px;margin-top:-7px;margin-left:-1px;
   background:var(--s1);border-radius:1px;pointer-events:none;display:none;
 }
 .sliderwrap.band .edge{display:block;}
@@ -149,6 +149,30 @@ h1,h2,h3,.big{font-family:"Archivo Narrow","Arial Narrow",Arial,sans-serif;}
 .sliderwrap .slider::-moz-range-thumb{
   width:14px;height:14px;border-radius:50%;border:1.5px solid var(--s1);
   background:color-mix(in srgb, var(--s1) 38%, transparent);cursor:grab;
+}
+/* Which way the drag committed, shown where it is happening rather than as a
+   line of text to read: sideways arrows between the interval lines when the
+   band is being moved, up-and-down arrows on the lines themselves when it is
+   being widened. They flash once and fade, which is enough to teach the gesture
+   without becoming something that sits there. */
+.sliderwrap .cue{
+  position:absolute;top:50%;font-style:normal;font-size:12px;line-height:1;
+  color:var(--s1);opacity:0;pointer-events:none;transform:translate(-50%,-50%);
+}
+@keyframes cueflash{
+  0%{opacity:0;transform:translate(-50%,-50%) scale(.6);}
+  22%{opacity:1;transform:translate(-50%,-50%) scale(1);}
+  62%{opacity:1;}
+  100%{opacity:0;transform:translate(-50%,-50%) scale(1);}
+}
+.sliderwrap .cue.flash{animation:cueflash .75s ease-out 1;}
+.cueY{margin-top:-13px;}          /* sits just above its interval line */
+.sliderwrap.gear-x{cursor:ew-resize;}
+.sliderwrap.gear-y{cursor:ns-resize;}
+.sliderwrap.gear-x .fill{opacity:.5;}
+.sliderwrap.gear-y .edge{height:21px;margin-top:-10px;width:3px;margin-left:-1.5px;}
+@media (prefers-reduced-motion:reduce){
+  .sliderwrap .cue.flash{animation:none;opacity:.9;}
 }
 .sliderwrap .slider:active::-webkit-slider-thumb{cursor:grabbing;}
 .sliderwrap .slider:active::-moz-range-thumb{cursor:grabbing;}
