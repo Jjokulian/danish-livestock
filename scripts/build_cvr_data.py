@@ -23,6 +23,15 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 OUT = ROOT / "site" / "map" / "data" / "cvr.json"
+FIN = ROOT / "site" / "map" / "data" / "finance.json"
+
+# Filtering the whole map by a figure needs that figure for every company at
+# once, which is the one thing a sharded store deliberately will not do -- a
+# shard is fetched on a click. So the detail stays sharded and the numbers worth
+# filtering on ship as one small column index, loaded at boot. Four figures for
+# 1,630 companies is tens of kilobytes; the records they came from are 6.5 MB.
+FIN_FIELDS = ["year", "equity", "profit", "assets", "land_bldg", "revenue",
+              "employees"]
 
 # Record layout, mirrored in app.js.  Positional because 16,000 of these ship to
 # every visitor and the key names would be most of the file.
@@ -138,6 +147,27 @@ def employee_count(rec):
     return band or None
 
 
+def build_finance_index(financials, on_map):
+    """The filterable figures, newest year per company, keyed by CVR.
+
+    Only companies that actually filed appear -- about a tenth of the register,
+    since a sole trader or an I/S has no filing duty. The map has to say so
+    rather than quietly dropping nine farms in ten when a filter is touched.
+    """
+    out = {}
+    for cvr, years in financials.items():
+        if cvr not in on_map or not years:
+            continue
+        latest = years[0]
+        row = [int((latest.get("end") or "0")[:4]) or None]
+        row += [latest.get(f) for f in FIN_FIELDS[1:]]
+        while row and row[-1] is None:
+            row.pop()
+        if len(row) > 1:                      # a year alone is not worth shipping
+            out[str(cvr)] = row
+    return out
+
+
 def main():
     companies = load_companies()
     financials = load_financials()
@@ -187,6 +217,16 @@ def main():
     print(f"{len(out):,} companies ({with_accounts:,} with accounts), "
           f"{len(industries.items)} industries, {len(forms.items)} legal forms")
     print(f"-> {OUT}  {size / 1e6:.2f} MB")
+
+    fin_index = build_finance_index(financials, set(companies))
+    FIN.write_text(json.dumps({"fields": FIN_FIELDS, "f": fin_index},
+                              separators=(",", ":")), encoding="utf-8")
+    counts = {f: sum(1 for r in fin_index.values()
+                     if len(r) > i and r[i] is not None)
+              for i, f in enumerate(FIN_FIELDS)}
+    print(f"-> {FIN}  {FIN.stat().st_size / 1024:.0f} KB  "
+          f"{len(fin_index):,} companies with figures")
+    print("   coverage: " + ", ".join(f"{f} {counts[f]:,}" for f in FIN_FIELDS[1:]))
 
 
 if __name__ == "__main__":
