@@ -9,6 +9,18 @@ var FIN = null;                     // filterable figures per CVR, loaded at boo
    in equity to a co-operative with twenty-five billion, so even steps would put
    everything in the first bucket. */
 var FIN_STEPS = [0, 1e6, 5e6, 1e7, 5e7, 1e8, 5e8, 1e9, 5e9];
+
+/* Herd sizes are not comparable between species -- the median horse holding is
+   three animals and the median pig holding a thousand -- so the interesting
+   question is not "how big" but "how big for its kind". These are the top-N
+   percent bands, and they close up logarithmically because all the interest is
+   in the tail: the step from 100% to 50% moves half the map, the step from
+   0.05% to 0.02% moves a handful of farms. */
+var PCT_STEPS = [1, 0.5, 0.25, 0.1, 0.05, 0.02, 0.01, 0.005,
+                 0.002, 0.001, 0.0005, 0.0002, 0.0001];
+var PCT_LABELS = ["All sites", "Top 50%", "Top 25%", "Top 10%", "Top 5%", "Top 2%",
+                  "Top 1%", "Top 0.5%", "Top 0.2%", "Top 0.1%", "Top 0.05%",
+                  "Top 0.02%", "Top 0.01%"];
 var FIN_LABELS = ["Any amount", "1m or more", "5m or more", "10m or more",
                   "50m or more", "100m or more", "500m or more", "1bn or more",
                   "5bn or more"];
@@ -25,7 +37,8 @@ var LAYERS = {
 /* record layout */
 var LON = 0, LAT = 1, GRP = 2, SPC = 3, HEAD = 4, DE = 5, HA = 6, KOM_I = 7,
     CHR = 8, CVR = 9, CATS = 10, MAT = 11, LAV = 12, PAR_HA = 13, PROP_HA = 14,
-    PROP_N = 15, SFE = 16, POST = 17, VIRK = 18, BRUG = 19, LPARC = 20, CROP = 21;
+    PROP_N = 15, SFE = 16, POST = 17, VIRK = 18, BRUG = 19, LPARC = 20, CROP = 21,
+    PCTL = 22;   // computed at boot: this herd's rank within its own species
 
 var nf = new Intl.NumberFormat("en-GB");
 var GROUP_VAR = ["--s1", "--s2", "--s3", "--s0", "--s0", "--s0", "--s0"];
@@ -35,7 +48,7 @@ var STEP_LABELS = ["All sites", "10 animals or more", "50 or more", "100 or more
 var Z_PARCEL = 11;   // below this, parcels are not drawn at all
 var Z_SHARP = 13;    // at and above this, full detail and individual matrikel lines
 
-var state = {group: -1, mode: "head", min: 0, metric: "", finMin: 0,
+var state = {group: -1, mode: "head", min: 0, metric: "", finMin: 0, pctl: 0,
              filtered: [], colors: {},
              selected: null, showAll: false};
 var byChr = new Map();   // CHR number -> its herd records; one site can hold several
@@ -424,6 +437,7 @@ function applyFilter(){
     var row = S[i];
     if (state.group >= 0 && row[GRP] !== state.group) continue;
     if (min > 0 && row[HEAD] < min) continue;
+    if (state.pctl > 0 && row[PCTL] > PCT_STEPS[state.pctl]) continue;
     if (state.metric){
       // A metric that is on means "only farms whose company filed", which is a
       // tenth of them. The note under the control says so.
@@ -532,6 +546,9 @@ function updateStats(){
         state.metric + ", " + nf.format(fin.n) + " companies";
     }
   }
+  var pc = document.getElementById("pctlCount");
+  if (pc) pc.textContent = state.pctl ? nf.format(sites) + " of their kind" : "—";
+
   var fc = document.getElementById("finCount");
   if (fc) fc.textContent = fin ? nf.format(fin.n) + " companies" : "—";
 
@@ -1093,6 +1110,13 @@ function wireControls(){
       scheduleDraw();
     });
   }
+  var pctl = document.getElementById("pctl");
+  if (pctl) pctl.addEventListener("input", function(){
+    state.pctl = Number(this.value);
+    document.getElementById("pctlLabel").textContent = PCT_LABELS[state.pctl];
+    applyFilter();
+  });
+
   var finSeg = document.getElementById("finMetric");
   if (finSeg) finSeg.addEventListener("click", function(ev){
     var b = ev.target.closest("button");
@@ -1126,6 +1150,40 @@ function wireControls(){
   }
 }
 
+/* Each site's rank within its own species, as a fraction from the top: 0 is the
+   largest holding of that species, 1 the smallest. Ties share a rank -- five
+   thousand smallholders with three horses each are all equally "top 60%", and
+   pretending otherwise would invent an order the register does not have. */
+function rankWithinSpecies(){
+  var bySpecies = new Map();
+  for (var i = 0; i < S.length; i++){
+    var arr = bySpecies.get(S[i][SPC]);
+    if (!arr){ arr = []; bySpecies.set(S[i][SPC], arr); }
+    arr.push(S[i][HEAD]);
+  }
+  var sorted = new Map();
+  bySpecies.forEach(function(arr, spc){
+    arr.sort(function(a, b){ return b - a; });   // biggest first
+    sorted.set(spc, arr);
+  });
+  for (var j = 0; j < S.length; j++){
+    // The register carries a headcount of zero for a good deal of aquaculture --
+    // mussel beds and oyster banks are measured in tonnes, not animals. Ranking
+    // those by headcount puts every one of them joint first, which floods the
+    // top band with sites that have no size at all. They rank last instead, and
+    // the species filter is the way to look at them.
+    if (!S[j][HEAD]){ S[j][PCTL] = 1; continue; }
+    var list = sorted.get(S[j][SPC]);
+    // How many of this species are strictly larger, over the size of the cohort.
+    var lo = 0, hi = list.length;
+    while (lo < hi){
+      var mid = (lo + hi) >> 1;
+      if (list[mid] > S[j][HEAD]) lo = mid + 1; else hi = mid;
+    }
+    S[j][PCTL] = lo / list.length;
+  }
+}
+
 function initData(){
   for (var i = 0; i < S.length; i++){
     var key = S[i][CHR];
@@ -1149,6 +1207,8 @@ function initData(){
       openPanel(target, parcel);
     });
   });
+
+  rankWithinSpecies();
 
   document.getElementById("siteTotal").textContent = nf.format(S.length);
   var chrEl = document.getElementById("chrTotal");
