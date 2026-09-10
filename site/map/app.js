@@ -1079,7 +1079,6 @@ function dragAxis(el, opts){
   var onVertical = opts.onVertical || null;
   var vScale = opts.vScale || 160;      // pixels for the full width of the range
   var deadzone = opts.deadzone || 6;    // px before a direction counts as chosen
-  var switchAt = opts.switchAt || 22;   // px across the lock before it changes
   var grab = opts.grab || function(frac){ return Math.abs(frac - handleFraction()) < 0.02; };
 
   var dragging = false, grabbed = false, grabOffset = 0;
@@ -1147,23 +1146,15 @@ function dragAxis(el, opts){
     if (Math.abs(ev.clientX - downX) > 2 || Math.abs(ev.clientY - downY) > 2) moved = true;
 
     if (axis === null){
-      // Nothing is applied until the gesture commits to a direction.
+      // Nothing is applied until the gesture commits to a direction, and once
+      // it has, that is the direction for the rest of the drag. Letting it
+      // switch mid-gesture -- however much hysteresis guards the switch -- means
+      // an erratic drag flips between moving the band and resizing it, which is
+      // worse than either. One decision per press; change your mind by letting
+      // go and starting again.
       if (Math.max(Math.abs(dx), Math.abs(dy)) < deadzone) return;
       axis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
       rewind();
-    } else {
-      // Once locked it stays locked until the other direction is unmistakable,
-      // so a wobble mid-drag does not flip it back and forth.
-      var across = axis === "x" ? Math.abs(dy) : Math.abs(dx);
-      var along = axis === "x" ? Math.abs(dx) : Math.abs(dy);
-      if (across > switchAt && across > along * 2){
-        axis = axis === "x" ? "y" : "x";
-        pivotX = ev.clientX;
-        pivotY = ev.clientY;
-        snapValue = Number(el.value);
-        snapVertical = opts.readVertical ? opts.readVertical() : 0;
-        return;
-      }
     }
 
     if (axis === "x"){
