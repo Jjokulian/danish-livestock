@@ -1440,6 +1440,7 @@ function wireControls(){
   // Left to right, small to large -- the same direction as the track.
   var HERD_MODES = ["max", "band", "min"];
   var wheelAcc = 0, wheelAt = 0, wheelFired = 0;
+  var widthIdle = null;
 
   function refreshHerd(){
     document.getElementById("minHerdLabel").textContent = herdLabel(state.min);
@@ -1552,6 +1553,7 @@ function wireControls(){
       var wrap = minHerd.parentNode;
       wrap.classList.toggle("gear-x", axis === "x");
       wrap.classList.toggle("gear-y", axis === "y");
+      if (!axis){ wrap.classList.remove("widening", "narrowing"); }
       // The up-and-down arrows pulse for as long as gear-y is on the wrapper,
       // so they need no class of their own. Only the sideways one is a
       // one-shot, and it has to be retriggered by hand.
@@ -1565,7 +1567,21 @@ function wireControls(){
     readVertical: function(){ return state.herdWidth; },
     onVertical: function(w){
       if (state.herdMode !== "band") return;
+      var before = state.herdWidth;
       state.herdWidth = Math.max(0.01, Math.min(0.5, w));
+      // Compare what was applied, not what was asked for: against the stop, the
+      // pointer keeps moving and the band does not, and it should say so.
+      var d = state.herdWidth - before;
+      var wrap = minHerd.parentNode;
+      wrap.classList.toggle("widening", d > 0);
+      wrap.classList.toggle("narrowing", d < 0);
+      // Stable means "not changing now", not "not released yet" -- holding the
+      // pointer still mid-drag should go back to blue rather than keep the last
+      // direction on screen.
+      clearTimeout(widthIdle);
+      widthIdle = setTimeout(function(){
+        wrap.classList.remove("widening", "narrowing");
+      }, 140);
       refreshHerd();
     }
   });

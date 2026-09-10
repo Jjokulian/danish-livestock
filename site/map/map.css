@@ -26,6 +26,7 @@
      sequence runs light to dark as well as blue to red, so it survives being
      read as brightness alone. */
   --d1:#2c7fb8; --d2:#7fcdbb; --d3:#fecc5c; --d4:#fd8d3c; --d5:#bd0026;
+  --grow:#1baf7a; --shrink:#d93b2b;
   --focus:#2a78d6;
   --shadow:0 6px 20px rgba(16,18,15,.12);
 }
@@ -44,6 +45,7 @@
     --parcel-line:rgba(255,255,255,0.36);
     --selected:#d95926;
     --d1:#418fc4; --d2:#63b7a4; --d3:#e0b84e; --d4:#e07c32; --d5:#c4243f;
+    --grow:#22c98d; --shrink:#e8503f;
     --focus:#3987e5; --shadow:0 6px 20px rgba(0,0,0,.5);
   }
 }
@@ -61,6 +63,7 @@
   --parcel-line:rgba(255,255,255,0.36);
   --selected:#d95926;
   --d1:#418fc4; --d2:#63b7a4; --d3:#e0b84e; --d4:#e07c32; --d5:#c4243f;
+  --grow:#22c98d; --shrink:#e8503f;
   --focus:#3987e5; --shadow:0 6px 20px rgba(0,0,0,.5);
 }
 
@@ -185,6 +188,19 @@ h1,h2,h3,.big{font-family:"Archivo Narrow","Arial Narrow",Arial,sans-serif;}
 }
 .sliderwrap .cueX.flash{animation:cueonce .55s ease-out 1;}
 .sliderwrap.gear-y .cueY{animation:cuepulse .9s ease-in-out infinite;}
+
+/* While the band is being resized it takes the colour of the direction it is
+   going: green opening out, red closing in, and back to the ordinary blue the
+   moment it stops -- including when it stops because it has hit its limit,
+   which is the one case where the pointer is still moving and the band is not. */
+.sliderwrap.widening .fill,
+.sliderwrap.widening .edge,
+.sliderwrap.widening .cueY{background:var(--grow);color:var(--grow);}
+.sliderwrap.narrowing .fill,
+.sliderwrap.narrowing .edge,
+.sliderwrap.narrowing .cueY{background:var(--shrink);color:var(--shrink);}
+.sliderwrap .fill,
+.sliderwrap .edge{transition:background-color .12s linear;}
 
 .sliderwrap.gear-x{cursor:ew-resize;}
 .sliderwrap.gear-y{cursor:ns-resize;}
