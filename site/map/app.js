@@ -1299,15 +1299,15 @@ function wireControls(){
       var wrap = minHerd.parentNode;
       wrap.classList.toggle("gear-x", axis === "x");
       wrap.classList.toggle("gear-y", axis === "y");
-      if (!axis) return;
-      var ids = axis === "x" ? ["herdCueX"] : ["herdCueLo", "herdCueHi"];
-      ids.forEach(function(id){
-        var el = document.getElementById(id);
-        if (!el) return;
-        el.classList.remove("flash");
-        void el.offsetWidth;     // restart the animation rather than ignore it
-        el.classList.add("flash");
-      });
+      // The up-and-down arrows pulse for as long as gear-y is on the wrapper,
+      // so they need no class of their own. Only the sideways one is a
+      // one-shot, and it has to be retriggered by hand.
+      if (axis !== "x") return;
+      var el = document.getElementById("herdCueX");
+      if (!el) return;
+      el.classList.remove("flash");
+      void el.offsetWidth;       // restart the animation rather than ignore it
+      el.classList.add("flash");
     },
     readVertical: function(){ return state.herdWidth; },
     onVertical: function(w){
