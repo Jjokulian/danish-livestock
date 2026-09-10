@@ -10,45 +10,10 @@ var FIN = null;                     // filterable figures per CVR, loaded at boo
    everything in the first bucket. */
 var FIN_STEPS = [0, 1e6, 5e6, 1e7, 5e7, 1e8, 5e8, 1e9, 5e9];
 
-/* Herd sizes are not comparable between species -- the median horse holding is
-   three animals and the median pig holding a thousand -- so the interesting
-   question is not "how big" but "how big for its kind". These are the top-N
-   percent bands, and they close up logarithmically because all the interest is
-   in the tail: the step from 100% to 50% moves half the map, the step from
-   0.05% to 0.02% moves a handful of farms. */
-var PCT_STEPS = [1, 0.5, 0.25, 0.1, 0.05, 0.02, 0.01, 0.005,
-                 0.002, 0.001, 0.0005, 0.0002, 0.0001];
-var PCT_LABELS = ["All sites", "Top 50%", "Top 25%", "Top 10%", "Top 5%", "Top 2%",
-                  "Top 1%", "Top 0.5%", "Top 0.2%", "Top 0.1%", "Top 0.05%",
-                  "Top 0.02%", "Top 0.01%"];
-var FIN_LABELS = ["Any amount", "1m or more", "5m or more", "10m or more",
-                  "50m or more", "100m or more", "500m or more", "1bn or more",
-                  "5bn or more"];
+var HERD_POS_MAX = 1000;   // slider positions; the threshold is derived, not stepped
+var herdCeiling = 1;       // largest herd among the species currently shown
 
-/* Two cadastral layers, same machinery: the properties that keep livestock, and
-   optionally every other parcel in Denmark. */
-var LAYERS = {
-  farm: {dir: "data/tiles/",     idxUrl: "data/tile_index.json",
-         index: null, cache: new Map(), fails: new Set()},
-  all:  {dir: "data/tiles_all/", idxUrl: "data/tile_all_index.json",
-         index: null, cache: new Map(), fails: new Set()}
-};
-
-/* record layout */
-var LON = 0, LAT = 1, GRP = 2, SPC = 3, HEAD = 4, DE = 5, HA = 6, KOM_I = 7,
-    CHR = 8, CVR = 9, CATS = 10, MAT = 11, LAV = 12, PAR_HA = 13, PROP_HA = 14,
-    PROP_N = 15, SFE = 16, POST = 17, VIRK = 18, BRUG = 19, LPARC = 20, CROP = 21,
-    PCTL = 22;   // computed at boot: this herd's rank within its own species
-
-var nf = new Intl.NumberFormat("en-GB");
-var GROUP_VAR = ["--s1", "--s2", "--s3", "--s0", "--s0", "--s0", "--s0"];
-var STEPS = [0, 10, 50, 100, 500, 1000, 5000, 20000];
-var STEP_LABELS = ["All sites", "10 animals or more", "50 or more", "100 or more",
-                   "500 or more", "1,000 or more", "5,000 or more", "20,000 or more"];
-var Z_PARCEL = 11;   // below this, parcels are not drawn at all
-var Z_SHARP = 13;    // at and above this, full detail and individual matrikel lines
-
-var state = {group: -1, mode: "head", min: 0, metric: "", finMin: 0, pctl: 0,
+var state = {group: -1, mode: "head", min: 0, metric: "", finMin: 0,
              filtered: [], colors: {},
              selected: null, showAll: false};
 var byChr = new Map();   // CHR number -> its herd records; one site can hold several
@@ -81,6 +46,34 @@ function finance(row){
   if (!r) return null;
   var i = FIN.fields.indexOf(state.metric);
   return (i > 0 && r[i] != null) ? r[i] : null;
+}
+
+/* The slider spans whatever the selected species actually reaches, so the whole
+   track stays useful whichever kind is chosen. Cattle top out at 4,731 head and
+   laying hens at 300,000; a scale fixed to the larger would jam every cattle
+   holding into the first twentieth of the track. Recomputed when the species
+   selection changes. */
+function herdScale(){
+  var top = 1;
+  for (var i = 0; i < S.length; i++){
+    if (state.group >= 0 && S[i][GRP] !== state.group) continue;
+    if (S[i][HEAD] > top) top = S[i][HEAD];
+  }
+  herdCeiling = top;
+}
+
+/* Position to a headcount, logarithmically. Herd sizes are distributed that way
+   -- the median cattle holding is 10 animals and the largest is 4,731 -- so a
+   linear scale would spend nine tenths of its length on holdings that barely
+   differ from each other. */
+function herdFromPos(pos){
+  if (pos <= 0) return 0;
+  return Math.round(Math.pow(herdCeiling, pos / HERD_POS_MAX));
+}
+
+function herdLabel(pos){
+  if (pos <= 0) return "All sites";
+  return nf.format(herdFromPos(pos)) + " animals or more";
 }
 
 function value(row){ return state.mode === "head" ? row[HEAD] : row[DE] / 10; }
@@ -431,13 +424,12 @@ sizeCanvas();
 
 /* ---------------- filtering ---------------- */
 function applyFilter(){
-  var min = STEPS[state.min];
+  var min = herdFromPos(state.min);
   var out = [];
   for (var i = 0; i < S.length; i++){
     var row = S[i];
     if (state.group >= 0 && row[GRP] !== state.group) continue;
     if (min > 0 && row[HEAD] < min) continue;
-    if (state.pctl > 0 && row[PCTL] > PCT_STEPS[state.pctl]) continue;
     if (state.metric){
       // A metric that is on means "only farms whose company filed", which is a
       // tenth of them. The note under the control says so.
@@ -482,6 +474,11 @@ function buildSpeciesList(){
       host.querySelectorAll(".sp").forEach(function(el){
         el.setAttribute("aria-pressed", Number(el.dataset.idx) === state.group ? "true" : "false");
       });
+      // The slider spans the selected species' own range, so changing species
+      // rescales it. The handle keeps its position, which keeps its meaning:
+      // two thirds along is two thirds of the way up whatever is shown now.
+      herdScale();
+      document.getElementById("minHerdLabel").textContent = herdLabel(state.min);
       applyFilter();
     });
     host.appendChild(b);
@@ -546,9 +543,6 @@ function updateStats(){
         state.metric + ", " + nf.format(fin.n) + " companies";
     }
   }
-  var pc = document.getElementById("pctlCount");
-  if (pc) pc.textContent = state.pctl ? nf.format(sites) + " of their kind" : "—";
-
   var fc = document.getElementById("finCount");
   if (fc) fc.textContent = fin ? nf.format(fin.n) + " companies" : "—";
 
@@ -596,11 +590,13 @@ document.getElementById("sizeMode").addEventListener("click", function(ev){
   applyFilter();
   buildLegend();
 });
-document.getElementById("minHerd").addEventListener("input", function(){
+var minHerd = document.getElementById("minHerd");
+minHerd.addEventListener("input", function(){
   state.min = Number(this.value);
-  document.getElementById("minHerdLabel").textContent = STEP_LABELS[state.min];
+  document.getElementById("minHerdLabel").textContent = herdLabel(state.min);
   applyFilter();
 });
+telescope(minHerd, {near: 0.25, gamma: 3});
 
 /* ---------------- legend ---------------- */
 function buildLegend(){
@@ -1065,6 +1061,116 @@ function startLive(row, c){
   es.onerror = function(){ stop(); };
 }
 
+
+/* ---------------- telescoping sliders ----------------
+   A range input moves the same amount of value per pixel wherever you click,
+   which is wrong when the interesting part is a thousandth of the range. This
+   makes the value-per-pixel depend on how far the click is from the handle:
+   far away it behaves exactly like an ordinary slider, and close in it
+   magnifies, so the last few pixels either side of the handle resolve detail
+   the whole track could not otherwise reach.
+
+   The two regimes are joined at `near` and match exactly there, so there is no
+   jump as you cross the boundary -- the response just gets progressively finer
+   as you approach the handle. */
+function telescope(el, opts){
+  if (!el) return;
+  opts = opts || {};
+  var near = opts.near || 0.25;      // the fraction of the track that magnifies
+  var gamma = opts.gamma || 3;       // how hard it magnifies inside that
+  var floor = opts.floor || 0.02;    // finest gain on a drag: 50x, never zero
+  // Dragging up and down is a second axis for the same thumb, which is how a
+  // range gets a width without a second handle to fight over.
+  var onVertical = opts.onVertical || null;
+  var vScale = opts.vScale || 160;   // pixels for the full width of the range
+  var dragging = false, lastX = 0, lastY = 0;
+
+  function geom(){
+    var r = el.getBoundingClientRect();
+    // The thumb is inset by half its width at each end, so the usable track is
+    // shorter than the element and the handle never reaches the very edge.
+    var thumb = opts.thumb || 16;
+    return {left: r.left + thumb / 2, width: Math.max(1, r.width - thumb)};
+  }
+
+  function span(){ return (Number(el.max) || 100) - (Number(el.min) || 0); }
+
+  function handleFraction(){
+    var min = Number(el.min) || 0;
+    return (Number(el.value) - min) / Math.max(1e-9, span());
+  }
+
+  function pointerFraction(clientX){
+    var g = geom();
+    return Math.max(0, Math.min(1, (clientX - g.left) / g.width));
+  }
+
+  function commit(v){
+    var min = Number(el.min) || 0, max = Number(el.max) || 100;
+    var step = Number(el.step) || 1;
+    v = Math.max(min, Math.min(max, Math.round(v / step) * step));
+    if (String(v) === el.value) return;
+    el.value = v;
+    el.dispatchEvent(new Event("input", {bubbles: true}));
+  }
+
+  /* A click is absolute: it jumps by an amount that falls away cubically as the
+     click approaches the handle. Far out it lands exactly where an ordinary
+     slider would -- the two branches meet at `near` -- and close in it nudges by
+     a fraction of a step, which is the only way to separate one holding in ten
+     thousand from the next. */
+  function click(clientX){
+    var d = pointerFraction(clientX) - handleFraction();
+    var mag = Math.abs(d);
+    var delta = mag >= near
+      ? d * span()
+      : Math.sign(d) * Math.pow(mag / near, gamma) * near * span();
+    commit(Number(el.value) + delta);
+  }
+
+  /* A drag is relative, because an absolute one would defeat the whole thing:
+     each move recomputes from the handle's new position, so the handle chases
+     the pointer and the magnification evaporates within a few frames. Instead
+     the pixels moved are scaled by a gain taken from how far out the pointer is
+     -- ordinary speed at arm's length, fiftieth speed against the handle. */
+  function drag(clientX, clientY){
+    if (onVertical && clientY != null){
+      // Up widens, down narrows -- screen coordinates run the other way.
+      var dy = (lastY - clientY) / vScale;
+      if (dy) onVertical(dy);
+      lastY = clientY;
+    }
+    var g = geom();
+    var mag = Math.abs(pointerFraction(clientX) - handleFraction());
+    var gain = mag >= near ? 1
+      : Math.max(floor, Math.pow(mag / near, gamma - 1));
+    commit(Number(el.value) + (clientX - lastX) / g.width * span() * gain);
+    lastX = clientX;
+  }
+
+  el.addEventListener("pointerdown", function(ev){
+    if (el.disabled) return;
+    dragging = true;
+    lastX = ev.clientX;
+    lastY = ev.clientY;
+    el.setPointerCapture(ev.pointerId);
+    click(ev.clientX);
+    ev.preventDefault();   // the browser's own jump-to-click would fight this
+  });
+  el.addEventListener("pointermove", function(ev){
+    if (dragging) drag(ev.clientX, ev.clientY);
+  });
+  function stop(ev){
+    if (!dragging) return;
+    dragging = false;
+    try { el.releasePointerCapture(ev.pointerId); } catch (e) {}
+  }
+  el.addEventListener("pointerup", stop);
+  el.addEventListener("pointercancel", stop);
+  // Arrow keys, Home and End are untouched: the native input still handles
+  // those, and they remain the accessible way to reach an exact value.
+}
+
 /* ---------------- boot ---------------- */
 function wireControls(){
   document.getElementById("sizeMode").addEventListener("click", function(ev){
@@ -1082,11 +1188,13 @@ function wireControls(){
     applyFilter();
     buildLegend();
   });
-  document.getElementById("minHerd").addEventListener("input", function(){
+  var minHerd = document.getElementById("minHerd");
+  minHerd.addEventListener("input", function(){
     state.min = Number(this.value);
-    document.getElementById("minHerdLabel").textContent = STEP_LABELS[state.min];
+    document.getElementById("minHerdLabel").textContent = herdLabel(state.min);
     applyFilter();
   });
+  telescope(minHerd, {near: 0.25, gamma: 3});
   var allBox = document.getElementById("showAll");
   if (allBox){
     allBox.addEventListener("change", function(){
@@ -1110,13 +1218,6 @@ function wireControls(){
       scheduleDraw();
     });
   }
-  var pctl = document.getElementById("pctl");
-  if (pctl) pctl.addEventListener("input", function(){
-    state.pctl = Number(this.value);
-    document.getElementById("pctlLabel").textContent = PCT_LABELS[state.pctl];
-    applyFilter();
-  });
-
   var finSeg = document.getElementById("finMetric");
   if (finSeg) finSeg.addEventListener("click", function(ev){
     var b = ev.target.closest("button");
@@ -1150,40 +1251,6 @@ function wireControls(){
   }
 }
 
-/* Each site's rank within its own species, as a fraction from the top: 0 is the
-   largest holding of that species, 1 the smallest. Ties share a rank -- five
-   thousand smallholders with three horses each are all equally "top 60%", and
-   pretending otherwise would invent an order the register does not have. */
-function rankWithinSpecies(){
-  var bySpecies = new Map();
-  for (var i = 0; i < S.length; i++){
-    var arr = bySpecies.get(S[i][SPC]);
-    if (!arr){ arr = []; bySpecies.set(S[i][SPC], arr); }
-    arr.push(S[i][HEAD]);
-  }
-  var sorted = new Map();
-  bySpecies.forEach(function(arr, spc){
-    arr.sort(function(a, b){ return b - a; });   // biggest first
-    sorted.set(spc, arr);
-  });
-  for (var j = 0; j < S.length; j++){
-    // The register carries a headcount of zero for a good deal of aquaculture --
-    // mussel beds and oyster banks are measured in tonnes, not animals. Ranking
-    // those by headcount puts every one of them joint first, which floods the
-    // top band with sites that have no size at all. They rank last instead, and
-    // the species filter is the way to look at them.
-    if (!S[j][HEAD]){ S[j][PCTL] = 1; continue; }
-    var list = sorted.get(S[j][SPC]);
-    // How many of this species are strictly larger, over the size of the cohort.
-    var lo = 0, hi = list.length;
-    while (lo < hi){
-      var mid = (lo + hi) >> 1;
-      if (list[mid] > S[j][HEAD]) lo = mid + 1; else hi = mid;
-    }
-    S[j][PCTL] = lo / list.length;
-  }
-}
-
 function initData(){
   for (var i = 0; i < S.length; i++){
     var key = S[i][CHR];
@@ -1208,11 +1275,10 @@ function initData(){
     });
   });
 
-  rankWithinSpecies();
-
   document.getElementById("siteTotal").textContent = nf.format(S.length);
   var chrEl = document.getElementById("chrTotal");
   if (chrEl) chrEl.textContent = nf.format(byChr.size);
+  herdScale();
   buildSpeciesList();
   buildLegend();
   applyFilter();
