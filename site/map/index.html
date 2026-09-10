@@ -49,23 +49,6 @@
         last few holdings can be separated one at a time.</p>
       </div>
 
-      <div class="blk" id="finBlk">
-        <span class="eyebrow">Company finances</span>
-        <div class="seg" id="finMetric">
-          <button type="button" data-metric="" aria-pressed="true">Off</button>
-          <button type="button" data-metric="equity" aria-pressed="false">Equity</button>
-          <button type="button" data-metric="assets" aria-pressed="false">Balance</button>
-          <button type="button" data-metric="profit" aria-pressed="false">Profit</button>
-        </div>
-        <input type="range" class="slider" id="finMin" min="0" max="8" step="1" value="0"
-               aria-label="Minimum value" disabled>
-        <div class="slabel"><span id="finMinLabel">Any amount</span>
-          <span class="mono" id="finCount">—</span></div>
-        <p class="note" style="margin:9px 0 0;" id="finNote">Only companies that file
-        annual accounts have figures &mdash; 1,630 of 16,449, covering 4,017 of the
-        57,860 herd records. Turning a metric on shows only those.</p>
-      </div>
-
       <div class="blk">
         <span class="eyebrow">Selection totals</span>
         <div class="stats">
@@ -74,7 +57,6 @@
           <div class="stat"><div class="big mono" id="stDE">—</div><div class="lb">animal units (DE)</div></div>
           <div class="stat"><div class="big mono" id="stLand">—</div><div class="lb" id="stLandLb">hectares farmed</div></div>
           <div class="stat"><div class="big mono" id="stProp">—</div><div class="lb">hectares held as property</div></div>
-          <div class="stat" id="stFinWrap" hidden><div class="big mono" id="stFin">—</div><div class="lb" id="stFinLb">equity, DKK</div></div>
         </div>
       </div>
 

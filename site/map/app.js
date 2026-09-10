@@ -3,17 +3,28 @@
 
 var D, KOM, S, CFG = null;
 var STORE = null, CVRMETA = null;   // the sharded company store
-var FIN = null;                     // filterable figures per CVR, loaded at boot
 
-/* Kroner, on a log-ish ladder: the spread runs from a farm with half a million
-   in equity to a co-operative with twenty-five billion, so even steps would put
-   everything in the first bucket. */
-var FIN_STEPS = [0, 1e6, 5e6, 1e7, 5e7, 1e8, 5e8, 1e9, 5e9];
+var LAYERS = {
+  farm: {dir: "data/tiles/",     idxUrl: "data/tile_index.json",
+         index: null, cache: new Map(), fails: new Set()},
+  all:  {dir: "data/tiles_all/", idxUrl: "data/tile_all_index.json",
+         index: null, cache: new Map(), fails: new Set()}
+};
+
+/* record layout */
+var LON = 0, LAT = 1, GRP = 2, SPC = 3, HEAD = 4, DE = 5, HA = 6, KOM_I = 7,
+    CHR = 8, CVR = 9, CATS = 10, MAT = 11, LAV = 12, PAR_HA = 13, PROP_HA = 14,
+    PROP_N = 15, SFE = 16, POST = 17, VIRK = 18, BRUG = 19, LPARC = 20, CROP = 21;
+
+var nf = new Intl.NumberFormat("en-GB");
+var GROUP_VAR = ["--s1", "--s2", "--s3", "--s0", "--s0", "--s0", "--s0"];
+var Z_PARCEL = 11;   // below this, parcels are not drawn at all
+var Z_SHARP = 13;    // at and above this, full detail and individual matrikel lines
 
 var HERD_POS_MAX = 1000;   // slider positions; the threshold is derived, not stepped
 var herdCeiling = 1;       // largest herd among the species currently shown
 
-var state = {group: -1, mode: "head", min: 0, metric: "", finMin: 0,
+var state = {group: -1, mode: "head", min: 0,
              filtered: [], colors: {},
              selected: null, showAll: false};
 var byChr = new Map();   // CHR number -> its herd records; one site can hold several
@@ -36,17 +47,6 @@ function readColors(){
   };
 }
 readColors();
-
-/* One figure for the company behind a site, or null if it never filed. The
-   column index is keyed by CVR, so several sites of one business share a value
-   -- which is correct: the accounts are the company's, not the farmyard's. */
-function finance(row){
-  if (!FIN || !row || !row[CVR]) return null;
-  var r = FIN.f[String(row[CVR])];
-  if (!r) return null;
-  var i = FIN.fields.indexOf(state.metric);
-  return (i > 0 && r[i] != null) ? r[i] : null;
-}
 
 /* The slider spans whatever the selected species actually reaches, so the whole
    track stays useful whichever kind is chosen. Cattle top out at 4,731 head and
@@ -430,12 +430,6 @@ function applyFilter(){
     var row = S[i];
     if (state.group >= 0 && row[GRP] !== state.group) continue;
     if (min > 0 && row[HEAD] < min) continue;
-    if (state.metric){
-      // A metric that is on means "only farms whose company filed", which is a
-      // tenth of them. The note under the control says so.
-      var v = finance(row);
-      if (v == null || v < FIN_STEPS[state.finMin]) continue;
-    }
     out.push(row);
   }
   out.sort(function(a, b){ return value(b) - value(a); });
@@ -490,23 +484,6 @@ function compact(v){
   if (v >= 1e4) return Math.round(v / 1e3) + "k";
   return nf.format(v);
 }
-/* Sum a figure once per company, not once per site: one business can hold
-   several herds and adding its equity in twice would be nonsense. */
-function financeTotal(rows){
-  if (!FIN || !state.metric) return null;
-  var seen = new Set(), total = 0, n = 0;
-  for (var i = 0; i < rows.length; i++){
-    var cvr = rows[i][CVR];
-    if (!cvr || seen.has(cvr)) continue;
-    var v = finance(rows[i]);
-    if (v == null) continue;
-    seen.add(cvr);
-    total += v;
-    n++;
-  }
-  return {total: total, n: n};
-}
-
 function updateStats(){
   var sites = state.filtered.length, head = 0, de = 0, land = 0, prop = 0;
   var seen = new Set(), seenProp = new Set();
@@ -532,19 +509,6 @@ function updateStats(){
   if (pe) pe.textContent = prop ? compact(Math.round(prop)) : "—";
   document.getElementById("shownCount").textContent = nf.format(sites) + " shown";
 
-  // The money, summed once per company, shown only while a metric is chosen.
-  var fin = financeTotal(state.filtered);
-  var wrap = document.getElementById("stFinWrap");
-  if (wrap){
-    wrap.hidden = !fin;
-    if (fin){
-      document.getElementById("stFin").textContent = kr(fin.total);
-      document.getElementById("stFinLb").textContent =
-        state.metric + ", " + nf.format(fin.n) + " companies";
-    }
-  }
-  var fc = document.getElementById("finCount");
-  if (fc) fc.textContent = fin ? nf.format(fin.n) + " companies" : "—";
 
   var metric = state.mode === "head" ? 0 : 1;
   var list = Array.from(perKom.entries());
@@ -1218,28 +1182,6 @@ function wireControls(){
       scheduleDraw();
     });
   }
-  var finSeg = document.getElementById("finMetric");
-  if (finSeg) finSeg.addEventListener("click", function(ev){
-    var b = ev.target.closest("button");
-    if (!b) return;
-    state.metric = b.dataset.metric;
-    this.querySelectorAll("button").forEach(function(el){
-      el.setAttribute("aria-pressed", el.dataset.metric === state.metric ? "true" : "false");
-    });
-    var slider = document.getElementById("finMin");
-    if (slider) slider.disabled = !state.metric;
-    if (!state.metric){ state.finMin = 0; if (slider) slider.value = 0;
-                        document.getElementById("finMinLabel").textContent = FIN_LABELS[0]; }
-    applyFilter();
-  });
-
-  var finMin = document.getElementById("finMin");
-  if (finMin) finMin.addEventListener("input", function(){
-    state.finMin = Number(this.value);
-    document.getElementById("finMinLabel").textContent = FIN_LABELS[state.finMin];
-    applyFilter();
-  });
-
   document.getElementById("panelClose").addEventListener("click", closePanel);
   document.addEventListener("keydown", function(e){ if (e.key === "Escape") closePanel(); });
   if (window.matchMedia){
@@ -1318,13 +1260,10 @@ getJSON("data/kommuner.json").then(function(k){
   return Promise.all([
     getJSON("data/sites.json"),
     getJSON("data/tile_index.json").catch(function(){ return null; }),
-    opening,
-    // 88 KB against the 6.5 MB of detail it indexes: the figures worth filtering
-    // the whole map by, for every company that filed.
-    getJSON("data/finance.json").catch(function(){ return null; })
+    opening
   ]);
 }).then(function(res){
-  D = res[0]; LAYERS.farm.index = res[1]; FIN = res[3]; S = D.sites;
+  D = res[0]; LAYERS.farm.index = res[1]; S = D.sites;
   initData();
 }).catch(function(err){
   var boot = document.getElementById("boot");
