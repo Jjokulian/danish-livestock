@@ -587,30 +587,6 @@ function zoomToKommune(idx){
   if (bounds) map.fitBounds(bounds, {padding: [20, 20]});
 }
 
-/* ---------------- controls ---------------- */
-document.getElementById("sizeMode").addEventListener("click", function(ev){
-  var b = ev.target.closest("button");
-  if (!b) return;
-  state.mode = b.dataset.mode;
-  this.querySelectorAll("button").forEach(function(el){
-    el.setAttribute("aria-pressed", el.dataset.mode === state.mode ? "true" : "false");
-  });
-  document.getElementById("sizeNote").textContent = state.mode === "head"
-    ? "Area is proportional to the herd recorded at the site."
-    : "Animal units weight species by manure output. Horses and hobby holdings sit at zero.";
-  document.getElementById("legendTitle").textContent = state.mode === "head"
-    ? "Animals per site" : "Animal units per site";
-  applyFilter();
-  buildLegend();
-});
-var minHerd = document.getElementById("minHerd");
-minHerd.addEventListener("input", function(){
-  state.min = Number(this.value);
-  document.getElementById("minHerdLabel").textContent = herdLabel(state.min);
-  applyFilter();
-});
-telescope(minHerd, {near: 0.25, gamma: 3});
-
 /* ---------------- legend ---------------- */
 function buildLegend(){
   var vals = state.mode === "head" ? [10, 1000, 100000] : [10, 100, 1000];
@@ -1086,24 +1062,29 @@ function startLive(row, c){
    The two regimes are joined at `near` and match exactly there, so there is no
    jump as you cross the boundary -- the response just gets progressively finer
    as you approach the handle. */
-function telescope(el, opts){
+/* A range input with two things the native one lacks: a handle you can pick up
+   and carry, and an axis lock so a two-dimensional drag does not do two things
+   at once.
+ *
+ * There is deliberately no magnification here any more. The scale this drives
+ * is already logarithmic, which means a pixel is a constant *ratio* of the
+ * value wherever you are -- that is the thing magnification was for. Stacking a
+ * position-dependent gain on top of a log scale gives two curves acting at
+ * once, and no way to tell which one moved the handle. One nonlinearity is
+ * useful; two is unpredictable.
+ */
+function dragAxis(el, opts){
   if (!el) return;
   opts = opts || {};
-  var near = opts.near || 0.25;      // the fraction of the track that magnifies
-  var gamma = opts.gamma || 3;       // how hard it magnifies inside that
-  var floor = opts.floor || 0.02;    // finest gain on a drag: 50x, never zero
-  // Dragging up and down is a second axis for the same thumb, which is how a
-  // range gets a width without a second handle to fight over.
   var onVertical = opts.onVertical || null;
-  var vScale = opts.vScale || 160;   // pixels for the full width of the range
-  /* What counts as "on the handle". Grabbing the handle should move it with the
-     pointer rather than snapping its value to where the pointer happens to be,
-     which is what every other draggable thing does. A caller can widen this --
-     in band mode the whole interval is the handle, so grabbing anywhere inside
-     it picks the band up where you took hold of it. */
+  var vScale = opts.vScale || 160;      // pixels for the full width of the range
+  var deadzone = opts.deadzone || 6;    // px before a direction counts as chosen
+  var switchAt = opts.switchAt || 22;   // px across the lock before it changes
   var grab = opts.grab || function(frac){ return Math.abs(frac - handleFraction()) < 0.02; };
-  var dragging = false, grabbed = false, grabOffset = 0, lastX = 0, lastY = 0;
-  var moved = false, downX = 0;
+
+  var dragging = false, grabbed = false, grabOffset = 0;
+  var axis = null, downX = 0, downY = 0, pivotX = 0, pivotY = 0, moved = false;
+  var snapValue = 0, snapVertical = 0;
 
   function geom(){
     var r = el.getBoundingClientRect();
@@ -1112,19 +1093,15 @@ function telescope(el, opts){
     var thumb = opts.thumb || 16;
     return {left: r.left + thumb / 2, width: Math.max(1, r.width - thumb)};
   }
-
   function span(){ return (Number(el.max) || 100) - (Number(el.min) || 0); }
-
   function handleFraction(){
     var min = Number(el.min) || 0;
     return (Number(el.value) - min) / Math.max(1e-9, span());
   }
-
   function pointerFraction(clientX){
     var g = geom();
     return Math.max(0, Math.min(1, (clientX - g.left) / g.width));
   }
-
   function commit(v){
     var min = Number(el.min) || 0, max = Number(el.max) || 100;
     var step = Number(el.step) || 1;
@@ -1134,69 +1111,79 @@ function telescope(el, opts){
     el.dispatchEvent(new Event("input", {bubbles: true}));
   }
 
-  /* A click is absolute: it jumps by an amount that falls away cubically as the
-     click approaches the handle. Far out it lands exactly where an ordinary
-     slider would -- the two branches meet at `near` -- and close in it nudges by
-     a fraction of a step, which is the only way to separate one holding in ten
-     thousand from the next. */
-  function click(clientX){
-    var d = pointerFraction(clientX) - handleFraction();
-    var mag = Math.abs(d);
-    var delta = mag >= near
-      ? d * span()
-      : Math.sign(d) * Math.pow(mag / near, gamma) * near * span();
-    commit(Number(el.value) + delta);
-  }
-
-  /* A drag follows the cursor exactly, like any other slider. Magnifying a drag
-     as well was a mistake: the thumb then lags behind the finger holding it,
-     which reads as a broken control however principled the curve behind it is.
-     Precision comes from clicking, which is a discrete act with nothing to lag.
-     The vertical axis still applies, since that is a separate gesture. */
-  function drag(clientX, clientY){
-    if (onVertical && clientY != null){
-      // Up widens, down narrows -- screen coordinates run the other way.
-      var dy = (lastY - clientY) / vScale;
-      if (dy) onVertical(dy);
-      lastY = clientY;
-    }
+  function setFromX(clientX){
     var min = Number(el.min) || 0;
-    // A grabbed handle keeps the point you took hold of under the pointer; an
-    // ungrabbed drag is the ordinary "value follows cursor".
     var frac = pointerFraction(clientX) - (grabbed ? grabOffset : 0);
     commit(min + Math.max(0, Math.min(1, frac)) * span());
-    lastX = clientX;
+  }
+
+  /* Undo whatever leaked into the wrong axis before the direction was clear.
+     Without this the first few pixels of every drag change both things, and a
+     gesture meant to widen a band also nudges where it sits. */
+  function rewind(){
+    commit(snapValue);
+    if (onVertical) onVertical(snapVertical, true);
   }
 
   el.addEventListener("pointerdown", function(ev){
     if (el.disabled) return;
     dragging = true;
-    lastX = ev.clientX;
-    lastY = ev.clientY;
+    moved = false;
+    axis = null;
+    downX = pivotX = ev.clientX;
+    downY = pivotY = ev.clientY;
     var frac = pointerFraction(ev.clientX);
     grabbed = grab(frac);
     grabOffset = frac - handleFraction();
-    moved = false;
-    downX = ev.clientX;
+    snapValue = Number(el.value);
+    snapVertical = opts.readVertical ? opts.readVertical() : 0;
     el.setPointerCapture(ev.pointerId);
-    if (!grabbed) click(ev.clientX);   // a click elsewhere still jumps, telescoped
-    ev.preventDefault();   // the browser's own jump-to-click would fight this
+    ev.preventDefault();
   });
+
   el.addEventListener("pointermove", function(ev){
     if (!dragging) return;
-    if (Math.abs(ev.clientX - downX) > 2) moved = true;
-    drag(ev.clientX, ev.clientY);
+    var dx = ev.clientX - pivotX, dy = ev.clientY - pivotY;
+    if (Math.abs(ev.clientX - downX) > 2 || Math.abs(ev.clientY - downY) > 2) moved = true;
+
+    if (axis === null){
+      // Nothing is applied until the gesture commits to a direction.
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < deadzone) return;
+      axis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
+      rewind();
+    } else {
+      // Once locked it stays locked until the other direction is unmistakable,
+      // so a wobble mid-drag does not flip it back and forth.
+      var across = axis === "x" ? Math.abs(dy) : Math.abs(dx);
+      var along = axis === "x" ? Math.abs(dx) : Math.abs(dy);
+      if (across > switchAt && across > along * 2){
+        axis = axis === "x" ? "y" : "x";
+        pivotX = ev.clientX;
+        pivotY = ev.clientY;
+        snapValue = Number(el.value);
+        snapVertical = opts.readVertical ? opts.readVertical() : 0;
+        return;
+      }
+    }
+
+    if (axis === "x"){
+      if (grabbed) setFromX(ev.clientX);
+      else setFromX(ev.clientX);
+    } else if (onVertical){
+      // Absolute from the pivot, not incremental, so the value depends only on
+      // where the pointer is and returning to the pivot returns the old width.
+      onVertical(snapVertical + (pivotY - ev.clientY) / vScale, false);
+    }
   });
+
   function stop(ev){
     if (!dragging) return;
     // Press and hold drags; a tap that never moved is a click, and lands where
-    // it was aimed even if the handle was sitting on top of that spot. Without
-    // this the handle is a dead zone, which is the one place a reader is most
-    // likely to press.
-    if (grabbed && !moved) click(ev.clientX);
+    // it was aimed even if the handle was sitting on top of that spot.
+    if (!moved) { grabbed = false; setFromX(ev.clientX); }
     dragging = false;
     grabbed = false;
-    try { el.releasePointerCapture(ev.pointerId); } catch (e) {}
+    axis = null;
   }
   el.addEventListener("pointerup", stop);
   el.addEventListener("pointercancel", stop);
@@ -1260,8 +1247,7 @@ function wireControls(){
     if (b) setHerdMode(b.dataset.hmode);
   });
 
-  telescope(minHerd, {
-    near: 0.25, gamma: 3,
+  dragAxis(minHerd, {
     // In band mode the whole interval is the handle, so it can be picked up
     // anywhere inside it and carried; elsewhere it is just the thumb.
     grab: function(frac){
@@ -1269,11 +1255,12 @@ function wireControls(){
       var reach = state.herdMode === "band" ? state.herdWidth : 0.02;
       return Math.abs(frac - at) <= reach;
     },
-    // Only the band has a width to change, so the vertical axis is inert in the
-    // other two rather than quietly editing something invisible.
-    onVertical: function(dy){
+    // The width is read and written rather than nudged, so the axis lock can
+    // put it back exactly as it was if the gesture turns out to be horizontal.
+    readVertical: function(){ return state.herdWidth; },
+    onVertical: function(w){
       if (state.herdMode !== "band") return;
-      state.herdWidth = Math.max(0.01, Math.min(0.5, state.herdWidth + dy));
+      state.herdWidth = Math.max(0.01, Math.min(0.5, w));
       refreshHerd();
     }
   });
