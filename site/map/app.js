@@ -77,13 +77,29 @@ function herdFromPos(pos){
    the three are open-ended -- everything above the handle, or everything below
    it. The third is a band around it, and its width comes from dragging the same
    handle up and down rather than from a second one to fight over. */
+/* The band's edges in slider positions, holding their separation.
+ *
+ * The width is set in track space, not value space -- what you drag to set is a
+ * visible span, and that is the cue you are reading -- so it stays the same
+ * width of track wherever the band sits. Clamping the two edges independently
+ * would not: pushed against either end the band shrank to half its size, which
+ * is the one moment you can see it happening and the one place it should not.
+ * So a band that runs off an end slides back inside instead of being cut.
+ */
+function herdBandPos(){
+  var w = state.herdWidth * HERD_POS_MAX;
+  var lo = state.min - w, hi = state.min + w;
+  if (lo < 0){ hi -= lo; lo = 0; }
+  if (hi > HERD_POS_MAX){ lo -= hi - HERD_POS_MAX; hi = HERD_POS_MAX; }
+  return [Math.max(0, lo), Math.min(HERD_POS_MAX, hi)];
+}
+
 function herdRange(){
   var v = herdFromPos(state.min);
   if (state.herdMode === "max") return [0, v || Infinity];
   if (state.herdMode === "band"){
-    var w = state.herdWidth * HERD_POS_MAX;
-    return [herdFromPos(Math.max(0, state.min - w)),
-            herdFromPos(Math.min(HERD_POS_MAX, state.min + w))];
+    var b = herdBandPos();
+    return [herdFromPos(b[0]), herdFromPos(b[1])];
   }
   return [v, Infinity];
 }
@@ -111,8 +127,8 @@ function paintHerdBand(){
   if (state.herdMode === "min"){ fill.style.left = at + "%"; fill.style.right = "0"; }
   else if (state.herdMode === "max"){ fill.style.left = "0"; fill.style.right = (100 - at) + "%"; }
   else {
-    var w = state.herdWidth * 100;
-    var l = Math.max(0, at - w), r = Math.min(100, at + w);
+    var b = herdBandPos();
+    var l = b[0] / HERD_POS_MAX * 100, r = b[1] / HERD_POS_MAX * 100;
     fill.style.left = l + "%";
     fill.style.right = (100 - r) + "%";
     // The edges sit on the same inset track the fill does, so they line up with
