@@ -102,15 +102,27 @@ function herdLabel(pos){
 function paintHerdBand(){
   var band = document.getElementById("herdBand");
   if (!band) return;
-  var fill = band.firstElementChild;
+  var fill = band.querySelector(".fill");
+  var wrap = band.parentNode;
+  var lo = document.getElementById("herdEdgeLo");
+  var hi = document.getElementById("herdEdgeHi");
   var at = state.min / HERD_POS_MAX * 100;
+
   if (state.herdMode === "min"){ fill.style.left = at + "%"; fill.style.right = "0"; }
   else if (state.herdMode === "max"){ fill.style.left = "0"; fill.style.right = (100 - at) + "%"; }
   else {
     var w = state.herdWidth * 100;
-    fill.style.left = Math.max(0, at - w) + "%";
-    fill.style.right = Math.max(0, 100 - Math.min(100, at + w)) + "%";
+    var l = Math.max(0, at - w), r = Math.min(100, at + w);
+    fill.style.left = l + "%";
+    fill.style.right = (100 - r) + "%";
+    // The edges sit on the same inset track the fill does, so they line up with
+    // where the thumb would have been rather than with the element's full width.
+    if (lo && hi){
+      lo.style.left = "calc(8px + " + l + "% - " + (l / 100 * 16) + "px - 1px)";
+      hi.style.left = "calc(8px + " + r + "% - " + (r / 100 * 16) + "px - 1px)";
+    }
   }
+  if (wrap) wrap.classList.toggle("band", state.herdMode === "band");
 }
 
 function value(row){ return state.mode === "head" ? row[HEAD] : row[DE] / 10; }
@@ -1084,7 +1096,14 @@ function telescope(el, opts){
   // range gets a width without a second handle to fight over.
   var onVertical = opts.onVertical || null;
   var vScale = opts.vScale || 160;   // pixels for the full width of the range
-  var dragging = false, lastX = 0, lastY = 0;
+  /* What counts as "on the handle". Grabbing the handle should move it with the
+     pointer rather than snapping its value to where the pointer happens to be,
+     which is what every other draggable thing does. A caller can widen this --
+     in band mode the whole interval is the handle, so grabbing anywhere inside
+     it picks the band up where you took hold of it. */
+  var grab = opts.grab || function(frac){ return Math.abs(frac - handleFraction()) < 0.02; };
+  var dragging = false, grabbed = false, grabOffset = 0, lastX = 0, lastY = 0;
+  var moved = false, downX = 0;
 
   function geom(){
     var r = el.getBoundingClientRect();
@@ -1142,7 +1161,10 @@ function telescope(el, opts){
       lastY = clientY;
     }
     var min = Number(el.min) || 0;
-    commit(min + pointerFraction(clientX) * span());
+    // A grabbed handle keeps the point you took hold of under the pointer; an
+    // ungrabbed drag is the ordinary "value follows cursor".
+    var frac = pointerFraction(clientX) - (grabbed ? grabOffset : 0);
+    commit(min + Math.max(0, Math.min(1, frac)) * span());
     lastX = clientX;
   }
 
@@ -1151,16 +1173,29 @@ function telescope(el, opts){
     dragging = true;
     lastX = ev.clientX;
     lastY = ev.clientY;
+    var frac = pointerFraction(ev.clientX);
+    grabbed = grab(frac);
+    grabOffset = frac - handleFraction();
+    moved = false;
+    downX = ev.clientX;
     el.setPointerCapture(ev.pointerId);
-    click(ev.clientX);
+    if (!grabbed) click(ev.clientX);   // a click elsewhere still jumps, telescoped
     ev.preventDefault();   // the browser's own jump-to-click would fight this
   });
   el.addEventListener("pointermove", function(ev){
-    if (dragging) drag(ev.clientX, ev.clientY);
+    if (!dragging) return;
+    if (Math.abs(ev.clientX - downX) > 2) moved = true;
+    drag(ev.clientX, ev.clientY);
   });
   function stop(ev){
     if (!dragging) return;
+    // Press and hold drags; a tap that never moved is a click, and lands where
+    // it was aimed even if the handle was sitting on top of that spot. Without
+    // this the handle is a dead zone, which is the one place a reader is most
+    // likely to press.
+    if (grabbed && !moved) click(ev.clientX);
     dragging = false;
+    grabbed = false;
     try { el.releasePointerCapture(ev.pointerId); } catch (e) {}
   }
   el.addEventListener("pointerup", stop);
@@ -1227,6 +1262,13 @@ function wireControls(){
 
   telescope(minHerd, {
     near: 0.25, gamma: 3,
+    // In band mode the whole interval is the handle, so it can be picked up
+    // anywhere inside it and carried; elsewhere it is just the thumb.
+    grab: function(frac){
+      var at = state.min / HERD_POS_MAX;
+      var reach = state.herdMode === "band" ? state.herdWidth : 0.02;
+      return Math.abs(frac - at) <= reach;
+    },
     // Only the band has a width to change, so the vertical axis is inert in the
     // other two rather than quietly editing something invisible.
     onVertical: function(dy){

@@ -123,7 +123,37 @@ h1,h2,h3,.big{font-family:"Archivo Narrow","Arial Narrow",Arial,sans-serif;}
   position:absolute;left:8px;right:8px;top:50%;height:5px;margin-top:-2px;
   border-radius:3px;background:var(--rule-soft);pointer-events:none;overflow:hidden;
 }
-.sliderband i{position:absolute;top:0;bottom:0;background:var(--s1);opacity:.30;}
+.sliderband .fill{position:absolute;top:0;bottom:0;background:var(--s1);opacity:.30;}
+
+/* In band mode the value is an interval, not a point, so the thumb is hidden
+   and the two edges are drawn instead -- a single dot in the middle of a range
+   says the wrong thing about what is selected. The input is still there and
+   still takes the pointer; only its thumb is invisible. */
+.sliderwrap .edge{
+  position:absolute;top:50%;width:2px;height:15px;margin-top:-7px;
+  background:var(--s1);border-radius:1px;pointer-events:none;display:none;
+}
+.sliderwrap.band .edge{display:block;}
+
+/* The thumb is translucent so the painted track reads through it -- a solid dot
+   sitting on top of the band hides the very thing it is pointing at. It keeps a
+   full-strength ring so it is still findable. */
+.sliderwrap .slider{-webkit-appearance:none;appearance:none;background:transparent;}
+.sliderwrap .slider::-webkit-slider-runnable-track{height:16px;background:transparent;}
+.sliderwrap .slider::-moz-range-track{height:16px;background:transparent;}
+.sliderwrap .slider::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;
+  background:color-mix(in srgb, var(--s1) 38%, transparent);
+  border:1.5px solid var(--s1);cursor:grab;margin-top:1px;
+}
+.sliderwrap .slider::-moz-range-thumb{
+  width:14px;height:14px;border-radius:50%;border:1.5px solid var(--s1);
+  background:color-mix(in srgb, var(--s1) 38%, transparent);cursor:grab;
+}
+.sliderwrap .slider:active::-webkit-slider-thumb{cursor:grabbing;}
+.sliderwrap .slider:active::-moz-range-thumb{cursor:grabbing;}
+.sliderwrap.band .slider::-webkit-slider-thumb{opacity:0;}
+.sliderwrap.band .slider::-moz-range-thumb{opacity:0;}
 .modeseg{display:flex;gap:0;margin-top:2px;}
 .modeseg button{
   flex:1;border:1px solid var(--rule);background:none;color:var(--muted);
